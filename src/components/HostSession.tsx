@@ -1,21 +1,23 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TransferFile, SESSION_DURATION_MS } from '../types';
-import { getPeerId, formatBytes, PEER_CONFIG } from '../utils/storage';
+import { getPeerId, formatBytes, PEER_CONFIG, generateShortId } from '../utils/storage';
 import { Peer } from 'peerjs';
-import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff, Terminal } from 'lucide-react';
+import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface HostSessionProps {
   sessionId: string;
   onExit: () => void;
 }
 
-const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
+const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, onExit }) => {
+  const [currentSessionId, setCurrentSessionId] = useState(initialSessionId);
   const [files, setFiles] = useState<TransferFile[]>([]);
   const [timeLeft, setTimeLeft] = useState<string>('30:00');
   const [peerStatus, setPeerStatus] = useState<'initializing' | 'ready' | 'error'>('initializing');
   const [connections, setConnections] = useState<number>(0);
   const [logs, setLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
   
   const peerRef = useRef<Peer | null>(null);
 
@@ -27,15 +29,15 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
 
   // Initialize PeerJS Host
   useEffect(() => {
-    addLog('--- Init Host Session ---');
-    const peerId = getPeerId(sessionId);
-    addLog(`Target Peer ID: ${peerId}`);
+    setPeerStatus('initializing');
+    addLog(`--- Init Host Session (ID: ${currentSessionId}) ---`);
+    const peerId = getPeerId(currentSessionId);
     
     // Create a new Peer with the specific ID and secure config
     const peer = new Peer(peerId, PEER_CONFIG);
 
     peer.on('open', (id) => {
-      addLog(`Host Peer Opened. Ready for connections.`);
+      addLog(`Host Peer Opened. Ready.`);
       setPeerStatus('ready');
     });
 
@@ -73,9 +75,12 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
     peer.on('error', (err: any) => {
       addLog(`PEER ERROR: ${err.type} - ${err.message}`);
       console.error('Peer error:', err);
-      // If ID is taken, it might be a ghost session from a refresh. 
+      
+      // Auto-retry logic if ID is taken
       if (err.type === 'unavailable-id') {
-        setPeerStatus('error');
+        addLog('ID taken, generating new ID...');
+        const newId = generateShortId();
+        setCurrentSessionId(newId); // This triggers useEffect again
       } else {
         setPeerStatus('error');
       }
@@ -106,7 +111,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
       }
       clearInterval(timerInterval);
     };
-  }, [sessionId, onExit, addLog]);
+  }, [currentSessionId, onExit, addLog]);
 
   const getFileIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-purple-400" />;
@@ -125,7 +130,12 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
     document.body.removeChild(link);
   };
 
-  const shareUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}#/join/${sessionId}`;
+  // Update URL hash to match current ID (if it changed due to collision)
+  useEffect(() => {
+      window.location.hash = `#/host/${currentSessionId}`; // Just for display
+  }, [currentSessionId]);
+
+  const shareUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}#/join/${currentSessionId}`;
 
   return (
     <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in pb-12">
@@ -142,8 +152,8 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
              )}
              {peerStatus === 'error' && (
                 <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-10 text-red-500 font-bold text-xs p-2 text-center">
-                  <span>Ошибка ID</span>
-                  <button onClick={onExit} className="mt-2 text-blue-500 underline">Пересоздать</button>
+                  <span>Ошибка сети</span>
+                  <button onClick={() => setCurrentSessionId(generateShortId())} className="mt-2 text-blue-500 underline">Повторить</button>
                 </div>
              )}
              <QRCodeSVG value={shareUrl} size={160} />
@@ -154,7 +164,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
           <div className="flex flex-col gap-2 w-full">
             <div className="flex items-center justify-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-700">
               <Smartphone className="w-4 h-4 text-indigo-400" />
-              <span className="text-sm font-mono text-indigo-300">ID: {sessionId}</span>
+              <span className="text-sm font-mono text-indigo-300">ID: {currentSessionId}</span>
             </div>
 
             <div className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-full border ${
@@ -190,18 +200,25 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
 
          {/* HOST LOG CONSOLE */}
         <div className="mt-4 border-t border-slate-700 pt-4">
-            <div className="flex items-center gap-2 text-slate-500 mb-2">
-                <Terminal className="w-4 h-4" />
-                <span className="text-xs font-mono uppercase">Системный журнал</span>
-            </div>
-            <div className="bg-black/80 rounded-lg p-3 h-32 overflow-y-auto font-mono text-[10px] leading-relaxed">
-                {logs.length === 0 && <span className="text-slate-600">Журнал пуст...</span>}
-                {logs.map((log, i) => (
-                    <div key={i} className="text-green-400 border-b border-white/5 pb-0.5 mb-0.5">
-                        {log}
-                    </div>
-                ))}
-            </div>
+             <button 
+                onClick={() => setShowLogs(!showLogs)}
+                className="flex items-center gap-2 text-slate-500 hover:text-slate-300 text-xs w-full mb-2"
+            >
+                <Terminal className="w-3 h-3" />
+                <span>Системный журнал</span>
+                {showLogs ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+            </button>
+            
+            {showLogs && (
+                <div className="bg-black/80 rounded-lg p-3 h-32 overflow-y-auto font-mono text-[10px] leading-relaxed animate-fade-in">
+                    {logs.length === 0 && <span className="text-slate-600">Журнал пуст...</span>}
+                    {logs.map((log, i) => (
+                        <div key={i} className="text-green-400 border-b border-white/5 pb-0.5 mb-0.5">
+                            {log}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
       </div>
 

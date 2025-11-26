@@ -9,7 +9,7 @@ const Header: React.FC = () => {
           <Share2 className="w-6 h-6 text-white" />
         </div>
         <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-          QuickTransfer
+          QuickTransfer v2.0
         </h1>
       </div>
     </header>

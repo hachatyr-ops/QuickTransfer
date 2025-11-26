@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TransferFile } from '../types';
 import { getPeerId, formatBytes, PEER_CONFIG } from '../utils/storage';
 import { Peer, DataConnection } from 'peerjs';
-import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertCircle, Info, Terminal } from 'lucide-react';
+import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertCircle, Info, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ClientSessionProps {
   sessionId: string;
@@ -16,6 +16,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [uploadedFiles, setUploadedFiles] = useState<TransferFile[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error' | 'timeout'>('connecting');
   const [logs, setLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const peerRef = useRef<Peer | null>(null);
@@ -298,18 +299,24 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
 
       {/* SYSTEM LOG CONSOLE */}
       <div className="mt-8 border-t border-slate-800 pt-4">
-        <div className="flex items-center gap-2 text-slate-500 mb-2">
-            <Terminal className="w-4 h-4" />
-            <span className="text-xs font-mono uppercase">Системный журнал (Debug)</span>
-        </div>
-        <div className="bg-black/80 rounded-lg p-3 h-40 overflow-y-auto font-mono text-[10px] leading-relaxed">
-            {logs.length === 0 && <span className="text-slate-600">Журнал пуст...</span>}
-            {logs.map((log, i) => (
-                <div key={i} className="text-green-400 border-b border-white/5 pb-0.5 mb-0.5">
-                    {log}
-                </div>
-            ))}
-        </div>
+        <button 
+                onClick={() => setShowLogs(!showLogs)}
+                className="flex items-center gap-2 text-slate-500 hover:text-slate-300 text-xs w-full mb-2"
+        >
+            <Terminal className="w-3 h-3" />
+            <span>Системный журнал (Debug)</span>
+            {showLogs ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+        </button>
+        {showLogs && (
+            <div className="bg-black/80 rounded-lg p-3 h-40 overflow-y-auto font-mono text-[10px] leading-relaxed animate-fade-in">
+                {logs.length === 0 && <span className="text-slate-600">Журнал пуст...</span>}
+                {logs.map((log, i) => (
+                    <div key={i} className="text-green-400 border-b border-white/5 pb-0.5 mb-0.5">
+                        {log}
+                    </div>
+                ))}
+            </div>
+        )}
       </div>
     </div>
   );
