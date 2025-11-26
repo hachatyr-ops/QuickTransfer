@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TransferFile, SESSION_DURATION_MS } from '../types';
 import { getPeerId, formatBytes, PEER_CONFIG } from '../utils/storage';
 import { Peer } from 'peerjs';
-import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff, Terminal } from 'lucide-react';
 
 interface HostSessionProps {
   sessionId: string;
@@ -15,45 +15,65 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
   const [timeLeft, setTimeLeft] = useState<string>('30:00');
   const [peerStatus, setPeerStatus] = useState<'initializing' | 'ready' | 'error'>('initializing');
   const [connections, setConnections] = useState<number>(0);
+  const [logs, setLogs] = useState<string[]>([]);
   
   const peerRef = useRef<Peer | null>(null);
 
+  // Debug Logger
+  const addLog = useCallback((msg: string) => {
+    const time = new Date().toLocaleTimeString();
+    setLogs(prev => [`[${time}] ${msg}`, ...prev]);
+  }, []);
+
   // Initialize PeerJS Host
   useEffect(() => {
+    addLog('--- Init Host Session ---');
     const peerId = getPeerId(sessionId);
+    addLog(`Target Peer ID: ${peerId}`);
     
     // Create a new Peer with the specific ID and secure config
     const peer = new Peer(peerId, PEER_CONFIG);
 
     peer.on('open', (id) => {
-      console.log('My peer ID is: ' + id);
+      addLog(`Host Peer Opened. Ready for connections.`);
       setPeerStatus('ready');
     });
 
     peer.on('connection', (conn) => {
-      console.log('Incoming connection from client');
+      addLog(`Incoming Connection Request!`);
       setConnections(prev => prev + 1);
+
+      conn.on('open', () => {
+         addLog(`Connection fully established with Client.`);
+      });
 
       conn.on('data', (data: any) => {
         // Handle incoming data
         if (data && data.type === 'file-transfer' && data.file) {
+           addLog(`Received file: ${data.file.name} (${formatBytes(data.file.size)})`);
            setFiles(prev => [data.file, ...prev]);
         }
       });
 
       conn.on('close', () => {
+        addLog(`Client disconnected.`);
         setConnections(prev => Math.max(0, prev - 1));
       });
       
-      conn.on('error', () => {
+      conn.on('error', (err) => {
+        addLog(`Connection Error: ${err}`);
         setConnections(prev => Math.max(0, prev - 1));
       });
+      
+      conn.peerConnection.oniceconnectionstatechange = () => {
+        addLog(`ICE State: ${conn.peerConnection.iceConnectionState}`);
+      };
     });
 
     peer.on('error', (err: any) => {
+      addLog(`PEER ERROR: ${err.type} - ${err.message}`);
       console.error('Peer error:', err);
       // If ID is taken, it might be a ghost session from a refresh. 
-      // We don't exit immediately to avoid UX loops, but show error.
       if (err.type === 'unavailable-id') {
         setPeerStatus('error');
       } else {
@@ -86,7 +106,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
       }
       clearInterval(timerInterval);
     };
-  }, [sessionId, onExit]);
+  }, [sessionId, onExit, addLog]);
 
   const getFileIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-purple-400" />;
@@ -108,7 +128,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
   const shareUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}#/join/${sessionId}`;
 
   return (
-    <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
+    <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in pb-12">
       {/* Sidebar / Info Panel */}
       <div className="md:col-span-1 space-y-4">
         <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl flex flex-col items-center text-center">
@@ -167,6 +187,22 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
           <Trash2 className="w-4 h-4" />
           <span>Завершить сессию</span>
         </button>
+
+         {/* HOST LOG CONSOLE */}
+        <div className="mt-4 border-t border-slate-700 pt-4">
+            <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <Terminal className="w-4 h-4" />
+                <span className="text-xs font-mono uppercase">Системный журнал</span>
+            </div>
+            <div className="bg-black/80 rounded-lg p-3 h-32 overflow-y-auto font-mono text-[10px] leading-relaxed">
+                {logs.length === 0 && <span className="text-slate-600">Журнал пуст...</span>}
+                {logs.map((log, i) => (
+                    <div key={i} className="text-green-400 border-b border-white/5 pb-0.5 mb-0.5">
+                        {log}
+                    </div>
+                ))}
+            </div>
+        </div>
       </div>
 
       {/* Main Content / File List */}

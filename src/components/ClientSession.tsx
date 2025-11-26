@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TransferFile } from '../types';
 import { getPeerId, formatBytes, PEER_CONFIG } from '../utils/storage';
 import { Peer, DataConnection } from 'peerjs';
-import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertCircle, Info } from 'lucide-react';
+import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertCircle, Info, Terminal } from 'lucide-react';
 
 interface ClientSessionProps {
   sessionId: string;
@@ -15,57 +15,93 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<TransferFile[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error' | 'timeout'>('connecting');
+  const [logs, setLogs] = useState<string[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const peerRef = useRef<Peer | null>(null);
   const connRef = useRef<DataConnection | null>(null);
-  // Fix: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout for better environment compatibility (browser vs node)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debug Logger
+  const addLog = useCallback((msg: string) => {
+    const time = new Date().toLocaleTimeString();
+    setLogs(prev => [`[${time}] ${msg}`, ...prev]);
+  }, []);
 
   const connectToPeer = useCallback(() => {
     setConnectionStatus('connecting');
+    addLog('--- Start Connection Sequence ---');
     
     // Clean up existing
-    if (peerRef.current) peerRef.current.destroy();
+    if (peerRef.current) {
+      addLog('Destroying old peer...');
+      peerRef.current.destroy();
+    }
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
-    // Set a timeout to warn user if connection takes too long (common on 4G)
+    // Set a timeout
     timeoutRef.current = setTimeout(() => {
-      setConnectionStatus((prev) => prev === 'connecting' ? 'timeout' : prev);
+      setConnectionStatus((prev) => {
+        if (prev === 'connecting') {
+          addLog('ERROR: Connection Timed Out (15s)');
+          return 'timeout';
+        }
+        return prev;
+      });
     }, 15000);
 
+    addLog('Creating new Peer instance...');
     const peer = new Peer(PEER_CONFIG);
     const hostPeerId = getPeerId(sessionId);
 
-    peer.on('open', () => {
-      console.log('Connecting to host:', hostPeerId);
+    peer.on('open', (id) => {
+      addLog(`My Client Peer ID: ${id}`);
+      addLog(`Attempting to connect to Host: ${hostPeerId}`);
+      
       const conn = peer.connect(hostPeerId, { reliable: true });
 
       conn.on('open', () => {
-        console.log('Connected to host!');
+        addLog('SUCCESS: Connection established!');
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         setConnectionStatus('connected');
         connRef.current = conn;
       });
 
       conn.on('close', () => {
+        addLog('Connection Closed');
         setConnectionStatus('disconnected');
         connRef.current = null;
       });
 
       conn.on('error', (err) => {
+        addLog(`CONN ERROR: ${err}`);
         console.error('Connection error:', err);
         setConnectionStatus('error');
       });
+      
+      // Listen for ICE candidates to debug NAT
+      conn.peerConnection.onicecandidate = (event) => {
+         if (event.candidate) {
+             addLog(`ICE Candidate found: ${event.candidate.candidate.substring(0, 30)}...`);
+         }
+      };
+      
+      conn.peerConnection.oniceconnectionstatechange = () => {
+          addLog(`ICE State: ${conn.peerConnection.iceConnectionState}`);
+      };
     });
 
-    peer.on('error', (err) => {
-      console.error('Peer error:', err);
+    peer.on('error', (err: any) => {
+      addLog(`PEER ERROR: ${err.type} - ${err.message}`);
       setConnectionStatus('error');
+    });
+    
+    peer.on('disconnected', () => {
+        addLog('Peer disconnected from server');
     });
 
     peerRef.current = peer;
-  }, [sessionId]);
+  }, [sessionId, addLog]);
 
   useEffect(() => {
     connectToPeer();
@@ -95,6 +131,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
       }
 
       setIsUploading(true);
+      addLog(`Starting upload of ${files.length} files...`);
 
       for (const file of files) {
         // Read file as Base64 (DataURL)
@@ -115,7 +152,8 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
               type: 'file-transfer',
               file: newFile
             });
-
+            
+            addLog(`Sent: ${file.name}`);
             setUploadedFiles(prev => [newFile, ...prev]);
           }
         };
@@ -142,14 +180,14 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
       case 'disconnected':
         return <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3" /> Отключено</span>;
       case 'timeout':
-        return <span className="text-orange-400 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Долгое соединение</span>;
+        return <span className="text-orange-400 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Тайм-аут</span>;
       case 'error':
         return <span className="text-red-500 flex items-center gap-1">Ошибка</span>;
     }
   };
 
   return (
-    <div className="max-w-md mx-auto w-full h-full flex flex-col animate-fade-in">
+    <div className="max-w-md mx-auto w-full h-full flex flex-col animate-fade-in pb-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
             <button onClick={onExit} className="p-2 -ml-2 text-slate-400 hover:text-white">
@@ -178,9 +216,9 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
           <div>
             <p className="font-bold mb-1">Не удается соединиться?</p>
             <ul className="list-disc list-inside space-y-1 text-orange-200/80 text-xs">
-              <li>Попробуйте подключиться к той же Wi-Fi сети, что и ПК.</li>
+              <li>Попробуйте подключиться к той же Wi-Fi сети.</li>
               <li>Если вы используете VPN, отключите его.</li>
-              <li>Обновите страницу на ПК, чтобы получить новый код.</li>
+              <li>Обновите страницу на ПК, чтобы сбросить ID.</li>
             </ul>
           </div>
         </div>
@@ -235,7 +273,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         </label>
       </div>
 
-      <div className="flex-1">
+      <div className="flex-1 mb-8">
         <h3 className="text-sm font-medium text-slate-400 mb-3 uppercase tracking-wider">История отправки</h3>
         
         <div className="space-y-3">
@@ -255,6 +293,22 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
               </div>
             ))
           )}
+        </div>
+      </div>
+
+      {/* SYSTEM LOG CONSOLE */}
+      <div className="mt-8 border-t border-slate-800 pt-4">
+        <div className="flex items-center gap-2 text-slate-500 mb-2">
+            <Terminal className="w-4 h-4" />
+            <span className="text-xs font-mono uppercase">Системный журнал (Debug)</span>
+        </div>
+        <div className="bg-black/80 rounded-lg p-3 h-40 overflow-y-auto font-mono text-[10px] leading-relaxed">
+            {logs.length === 0 && <span className="text-slate-600">Журнал пуст...</span>}
+            {logs.map((log, i) => (
+                <div key={i} className="text-green-400 border-b border-white/5 pb-0.5 mb-0.5">
+                    {log}
+                </div>
+            ))}
         </div>
       </div>
     </div>
