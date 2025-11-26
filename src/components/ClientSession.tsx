@@ -1,13 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TransferFile } from '../types';
-import { getPeerId, formatBytes } from '../utils/storage';
+import { getPeerId, formatBytes, PEER_CONFIG } from '../utils/storage';
 import { Peer, DataConnection } from 'peerjs';
-import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff } from 'lucide-react';
+import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface ClientSessionProps {
   sessionId: string;
   onExit: () => void;
 }
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB Limit for stability
 
 const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [isUploading, setIsUploading] = useState(false);
@@ -18,13 +20,16 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const peerRef = useRef<Peer | null>(null);
   const connRef = useRef<DataConnection | null>(null);
 
-  useEffect(() => {
-    // 1. Create my own peer ID
-    const peer = new Peer({ debug: 1 });
+  const connectToPeer = useCallback(() => {
+    setConnectionStatus('connecting');
+    
+    // Clean up existing
+    if (peerRef.current) peerRef.current.destroy();
+
+    const peer = new Peer(PEER_CONFIG);
     const hostPeerId = getPeerId(sessionId);
 
     peer.on('open', () => {
-      // 2. Connect to the Host
       console.log('Connecting to host:', hostPeerId);
       const conn = peer.connect(hostPeerId, { reliable: true });
 
@@ -51,12 +56,16 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
     });
 
     peerRef.current = peer;
+  }, [sessionId]);
+
+  useEffect(() => {
+    connectToPeer();
 
     return () => {
       if (connRef.current) connRef.current.close();
       if (peerRef.current) peerRef.current.destroy();
     };
-  }, [sessionId]);
+  }, [connectToPeer]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -65,8 +74,17 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         return;
       }
 
-      setIsUploading(true);
       const files: File[] = Array.from(e.target.files);
+      
+      // Check sizes first
+      const largeFiles = files.filter(f => f.size > MAX_FILE_SIZE);
+      if (largeFiles.length > 0) {
+        alert(`Файлы слишком большие: ${largeFiles.map(f => f.name).join(', ')}. Лимит: 50 МБ.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      setIsUploading(true);
 
       for (const file of files) {
         // Read file as Base64 (DataURL)
@@ -114,7 +132,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
       case 'disconnected':
         return <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3" /> Отключено</span>;
       case 'error':
-        return <span className="text-red-500 flex items-center gap-1">Ошибка подключения</span>;
+        return <span className="text-red-500 flex items-center gap-1">Ошибка</span>;
     }
   };
 
@@ -130,6 +148,15 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
             <div className="text-xs font-mono">{getConnectionStatusUI()}</div>
             </div>
         </div>
+        
+        {connectionStatus === 'error' || connectionStatus === 'disconnected' ? (
+           <button 
+             onClick={connectToPeer}
+             className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
+           >
+             <RefreshCw className="w-3 h-3" /> Повтор
+           </button>
+        ) : null}
       </div>
 
       <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700 shadow-xl text-center mb-6">
@@ -149,8 +176,15 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         <p className="text-slate-400 text-sm mb-6">
           {connectionStatus === 'connected' 
             ? 'Выберите фото или документы' 
-            : 'Ожидание соединения с ПК...'}
+            : connectionStatus === 'error' ? 'Ошибка соединения' : 'Ожидание соединения с ПК...'}
         </p>
+        
+        {connectionStatus === 'connected' && (
+          <div className="bg-indigo-900/30 text-indigo-200 text-xs px-3 py-2 rounded-lg mb-4 flex items-center justify-center gap-2">
+            <AlertCircle className="w-3 h-3" />
+            Лимит: 50 МБ на файл
+          </div>
+        )}
 
         <input
           type="file"

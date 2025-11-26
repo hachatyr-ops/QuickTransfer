@@ -1,4 +1,4 @@
-import { Peer } from 'peerjs';
+import { Peer, PeerOptions } from 'peerjs';
 import { TransferFile } from '../types';
 
 // Prefix to avoid collisions on the public PeerJS server
@@ -9,6 +9,18 @@ export const generateShortId = (): string => {
 };
 
 export const getPeerId = (shortId: string) => `${ID_PREFIX}${shortId}`;
+
+// PeerJS Configuration
+export const PEER_CONFIG: PeerOptions = {
+  debug: 1,
+  secure: true, // Critical for Vercel/HTTPS
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
+    ]
+  }
+};
 
 // Helper to format bytes
 export const formatBytes = (bytes: number, decimals = 2) => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TransferFile, SESSION_DURATION_MS } from '../types';
-import { getPeerId, formatBytes } from '../utils/storage';
+import { getPeerId, formatBytes, PEER_CONFIG } from '../utils/storage';
 import { Peer } from 'peerjs';
 import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
 
@@ -22,10 +22,8 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
   useEffect(() => {
     const peerId = getPeerId(sessionId);
     
-    // Create a new Peer with the specific ID
-    const peer = new Peer(peerId, {
-      debug: 1,
-    });
+    // Create a new Peer with the specific ID and secure config
+    const peer = new Peer(peerId, PEER_CONFIG);
 
     peer.on('open', (id) => {
       console.log('My peer ID is: ' + id);
@@ -54,10 +52,10 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
 
     peer.on('error', (err: any) => {
       console.error('Peer error:', err);
-      // If ID is taken or network fails
+      // If ID is taken, it might be a ghost session from a refresh. 
+      // We don't exit immediately to avoid UX loops, but show error.
       if (err.type === 'unavailable-id') {
-        alert('Этот ID сессии занят или произошла ошибка сети. Попробуйте создать новую сессию.');
-        onExit();
+        setPeerStatus('error');
       } else {
         setPeerStatus('error');
       }
@@ -123,8 +121,9 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
                </div>
              )}
              {peerStatus === 'error' && (
-                <div className="absolute inset-0 bg-white/90 flex items-center justify-center z-10 text-red-500 font-bold text-xs">
-                  Ошибка сети
+                <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-10 text-red-500 font-bold text-xs p-2 text-center">
+                  <span>Ошибка ID</span>
+                  <button onClick={onExit} className="mt-2 text-blue-500 underline">Пересоздать</button>
                 </div>
              )}
              <QRCodeSVG value={shareUrl} size={160} />
