@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TransferFile } from '../types';
 import { getPeerId, formatBytes, PEER_CONFIG } from '../utils/storage';
 import { Peer, DataConnection } from 'peerjs';
-import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertCircle } from 'lucide-react';
+import { UploadCloud, CheckCircle, File as FileIcon, Loader2, ArrowLeft, Wifi, WifiOff, RefreshCw, AlertCircle, Info } from 'lucide-react';
 
 interface ClientSessionProps {
   sessionId: string;
@@ -14,17 +14,25 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB Limit for stability
 const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<TransferFile[]>([]);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error' | 'timeout'>('connecting');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const peerRef = useRef<Peer | null>(null);
   const connRef = useRef<DataConnection | null>(null);
+  // Fix: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout for better environment compatibility (browser vs node)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connectToPeer = useCallback(() => {
     setConnectionStatus('connecting');
     
     // Clean up existing
     if (peerRef.current) peerRef.current.destroy();
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+    // Set a timeout to warn user if connection takes too long (common on 4G)
+    timeoutRef.current = setTimeout(() => {
+      setConnectionStatus((prev) => prev === 'connecting' ? 'timeout' : prev);
+    }, 15000);
 
     const peer = new Peer(PEER_CONFIG);
     const hostPeerId = getPeerId(sessionId);
@@ -35,6 +43,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
 
       conn.on('open', () => {
         console.log('Connected to host!');
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
         setConnectionStatus('connected');
         connRef.current = conn;
       });
@@ -64,6 +73,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
     return () => {
       if (connRef.current) connRef.current.close();
       if (peerRef.current) peerRef.current.destroy();
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [connectToPeer]);
 
@@ -131,6 +141,8 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3" /> Подключено</span>;
       case 'disconnected':
         return <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3" /> Отключено</span>;
+      case 'timeout':
+        return <span className="text-orange-400 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Долгое соединение</span>;
       case 'error':
         return <span className="text-red-500 flex items-center gap-1">Ошибка</span>;
     }
@@ -149,7 +161,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
             </div>
         </div>
         
-        {connectionStatus === 'error' || connectionStatus === 'disconnected' ? (
+        {connectionStatus !== 'connected' && connectionStatus !== 'connecting' ? (
            <button 
              onClick={connectToPeer}
              className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
@@ -158,6 +170,21 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
            </button>
         ) : null}
       </div>
+      
+      {/* Network Warning for Timeout/Error */}
+      {(connectionStatus === 'timeout' || connectionStatus === 'error') && (
+        <div className="bg-orange-900/30 border border-orange-500/30 rounded-xl p-4 mb-4 text-sm text-orange-200 flex gap-3">
+          <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold mb-1">Не удается соединиться?</p>
+            <ul className="list-disc list-inside space-y-1 text-orange-200/80 text-xs">
+              <li>Попробуйте подключиться к той же Wi-Fi сети, что и ПК.</li>
+              <li>Если вы используете VPN, отключите его.</li>
+              <li>Обновите страницу на ПК, чтобы получить новый код.</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700 shadow-xl text-center mb-6">
         <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border transition-colors ${
