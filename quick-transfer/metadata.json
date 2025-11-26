@@ -1,5 +1,0 @@
-{
-  "name": "QuickTransfer",
-  "description": "Быстрая передача файлов между устройствами через QR-код. Временные сессии, полная анонимность.",
-  "requestFramePermissions": []
-}
