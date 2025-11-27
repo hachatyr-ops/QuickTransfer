@@ -12,9 +12,11 @@ export const getPeerId = (shortId: string) => `${ID_PREFIX}${shortId}`;
 
 // PeerJS Configuration
 // Added multiple STUN servers to increase chance of NAT traversal on mobile networks
+// Added pingInterval to keep WebSocket alive
 export const PEER_CONFIG: PeerOptions = {
   debug: 1,
   secure: true,
+  pingInterval: 5000, // Send heartbeat every 5 seconds to prevent connection drop
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },

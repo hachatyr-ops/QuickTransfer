@@ -14,7 +14,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
   const [currentSessionId, setCurrentSessionId] = useState(initialSessionId);
   const [files, setFiles] = useState<TransferFile[]>([]);
   const [timeLeft, setTimeLeft] = useState<string>('30:00');
-  const [peerStatus, setPeerStatus] = useState<'initializing' | 'ready' | 'error'>('initializing');
+  const [peerStatus, setPeerStatus] = useState<'initializing' | 'ready' | 'error' | 'reconnecting'>('initializing');
   const [connections, setConnections] = useState<number>(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
@@ -39,6 +39,15 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
     peer.on('open', (id) => {
       addLog(`Host Peer Opened. Ready.`);
       setPeerStatus('ready');
+    });
+
+    peer.on('disconnected', () => {
+      addLog('Peer disconnected from server. Attempting reconnect...');
+      setPeerStatus('reconnecting');
+      // Workaround for PeerJS: reconnect only works if not destroyed
+      if (!peer.destroyed) {
+        peer.reconnect();
+      }
     });
 
     peer.on('connection', (conn) => {
@@ -81,6 +90,10 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
         addLog('ID taken, generating new ID...');
         const newId = generateShortId();
         setCurrentSessionId(newId); // This triggers useEffect again
+      } else if (err.type === 'network') {
+         // Keep attempting to reconnect for network errors
+         addLog('Network error. Will try to recover...');
+         setPeerStatus('reconnecting');
       } else {
         setPeerStatus('error');
       }
@@ -148,6 +161,12 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
              {peerStatus === 'initializing' && (
                <div className="absolute inset-0 bg-white/90 flex items-center justify-center z-10">
                  <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+               </div>
+             )}
+             {peerStatus === 'reconnecting' && (
+               <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-10 text-orange-500 font-bold text-xs p-2 text-center">
+                 <Loader2 className="w-6 h-6 animate-spin mb-1" />
+                 <span>Восстановление связи...</span>
                </div>
              )}
              {peerStatus === 'error' && (
