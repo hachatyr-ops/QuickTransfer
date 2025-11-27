@@ -1,9 +1,31 @@
 import mqtt, { MqttClient } from 'mqtt';
-import { TransferFile, FileChunk, MqttMessage } from '../types';
+import { TransferFile, FileChunk, MqttMessage, TransferSpeed } from '../types';
 
 // Брокер EMQX (Публичный, но стабильный)
 const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
-const TOPIC_PREFIX = 'quicktransfer/v9/session/';
+const TOPIC_PREFIX = 'quicktransfer/v10/session/';
+
+// Конфигурация скоростей
+const SPEED_CONFIG = {
+  FAST: {
+    chunkSize: 64 * 1024, // 64KB
+    delay: 15,            // Очень быстро
+    cooldownIdx: 50,      // Редкие паузы
+    cooldownTime: 200     // Короткие паузы
+  },
+  NORMAL: {
+    chunkSize: 32 * 1024, // 32KB
+    delay: 100,           // Средняя скорость
+    cooldownIdx: 10,      // Регулярные паузы
+    cooldownTime: 1000    // Секундная передышка
+  },
+  SLOW: {
+    chunkSize: 16 * 1024, // 16KB (надежнее)
+    delay: 300,           // Медленно
+    cooldownIdx: 5,       // Частые паузы
+    cooldownTime: 2000    // Длинная передышка
+  }
+};
 
 export const generateShortId = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -22,18 +44,16 @@ export const createMqttClient = () => {
   });
 };
 
-// --- CHUNK TRANSFER LOGIC ---
-// Оптимизация для надежности на публичных брокерах
-const CHUNK_SIZE = 32 * 1024; // 32KB
-
 export const sendFileViaChunks = async (
   file: File, 
   client: MqttClient, 
   topic: string,
-  onProgress: (pct: number) => void
+  onProgress: (pct: number) => void,
+  speed: TransferSpeed = 'NORMAL'
 ): Promise<void> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    const config = SPEED_CONFIG[speed];
     
     reader.onerror = () => reject(new Error("Ошибка чтения файла"));
 
@@ -42,10 +62,10 @@ export const sendFileViaChunks = async (
       
       // Получаем Base64 строку (убираем заголовок data:image/...)
       const base64Full = (e.target.result as string).split(',')[1];
-      const totalChunks = Math.ceil(base64Full.length / CHUNK_SIZE);
+      const totalChunks = Math.ceil(base64Full.length / config.chunkSize);
       const fileId = Math.random().toString(36).substring(7);
 
-      console.log(`Starting transfer: ${file.name}, Size: ${file.size}, Chunks: ${totalChunks}`);
+      console.log(`Starting transfer (${speed}): ${file.name}, Size: ${file.size}, Chunks: ${totalChunks}`);
 
       for (let i = 0; i < totalChunks; i++) {
         // Проверка подключения перед каждым чанком
@@ -54,8 +74,8 @@ export const sendFileViaChunks = async (
           return;
         }
 
-        const start = i * CHUNK_SIZE;
-        const end = start + CHUNK_SIZE;
+        const start = i * config.chunkSize;
+        const end = start + config.chunkSize;
         const chunkData = base64Full.substring(start, end);
 
         const chunk: FileChunk = {
@@ -79,18 +99,16 @@ export const sendFileViaChunks = async (
         const percent = Math.round(((i + 1) / totalChunks) * 100);
         onProgress(percent);
         
-        // --- АЛГОРИТМ "ВЕЖЛИВОСТИ" ---
-        // 1. Базовая задержка увеличена до 100мс
-        let delay = 100;
+        // --- АЛГОРИТМ ЗАДЕРЖКИ ---
+        let currentDelay = config.delay;
 
-        // 2. Каждые 10 чанков (320КБ) делаем "большую перемену", 
-        // чтобы сбросить счетчики спама на брокере.
-        if (i > 0 && i % 10 === 0) {
-            delay = 1000; // 1 секунда паузы
-            console.log('Cooldown pause...');
+        // Пауза для сброса анти-спам фильтров брокера
+        if (i > 0 && i % config.cooldownIdx === 0) {
+            currentDelay = config.cooldownTime;
+            console.log(`[${speed}] Cooldown pause...`);
         }
 
-        await new Promise(r => setTimeout(r, delay)); 
+        await new Promise(r => setTimeout(r, currentDelay)); 
       }
       resolve();
     };

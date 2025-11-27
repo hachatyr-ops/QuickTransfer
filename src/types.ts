@@ -32,3 +32,5 @@ export interface FileChunk {
   totalChunks: number;
   data: string; // Base64 chunk
 }
+
+export type TransferSpeed = 'FAST' | 'NORMAL' | 'SLOW';

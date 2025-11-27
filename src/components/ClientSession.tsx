@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getSessionTopic, createMqttClient, sendFileViaChunks, formatBytes } from '../utils/storage';
-import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock } from 'lucide-react';
+import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock, Gauge, Rabbit, Turtle, ShieldCheck } from 'lucide-react';
 import { MqttClient } from 'mqtt';
+import { TransferSpeed } from '../types';
 
 interface ClientSessionProps {
   sessionId: string;
@@ -19,6 +20,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [isConnected, setIsConnected] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [speed, setSpeed] = useState<TransferSpeed>('NORMAL');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clientRef = useRef<MqttClient | null>(null);
@@ -65,7 +67,8 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
                file, 
                clientRef.current, 
                getSessionTopic(sessionId), 
-               (pct) => setUploadProgress(`Передача ${file.name}: ${pct}%`)
+               (pct) => setUploadProgress(`Передача ${file.name}: ${pct}%`),
+               speed
              );
 
              // Добавляем в историю
@@ -92,9 +95,17 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
     }
   };
 
+  const getSpeedIcon = () => {
+    switch(speed) {
+      case 'FAST': return <Rabbit className="w-10 h-10 text-pink-400" />;
+      case 'NORMAL': return <ShieldCheck className="w-10 h-10 text-emerald-400" />;
+      case 'SLOW': return <Turtle className="w-10 h-10 text-blue-400" />;
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto w-full h-full flex flex-col animate-fade-in pb-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
             <button onClick={onExit} className="p-2 -ml-2 text-slate-400 hover:text-white">
             <ArrowLeft className="w-5 h-5" />
@@ -107,12 +118,37 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
             </div>
         </div>
       </div>
+
+      {/* Выбор скорости */}
+      <div className="bg-slate-800 rounded-xl p-3 mb-4 border border-slate-700 grid grid-cols-3 gap-2">
+        <button 
+          onClick={() => setSpeed('FAST')}
+          className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${speed === 'FAST' ? 'bg-pink-900/30 border-pink-500 text-white' : 'border-transparent text-slate-500 hover:bg-slate-700'}`}
+        >
+          <Rabbit className="w-5 h-5 mb-1" />
+          <span className="text-xs font-bold">Быстро</span>
+        </button>
+        <button 
+          onClick={() => setSpeed('NORMAL')}
+          className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${speed === 'NORMAL' ? 'bg-emerald-900/30 border-emerald-500 text-white' : 'border-transparent text-slate-500 hover:bg-slate-700'}`}
+        >
+          <ShieldCheck className="w-5 h-5 mb-1" />
+          <span className="text-xs font-bold">Норма</span>
+        </button>
+        <button 
+          onClick={() => setSpeed('SLOW')}
+          className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${speed === 'SLOW' ? 'bg-blue-900/30 border-blue-500 text-white' : 'border-transparent text-slate-500 hover:bg-slate-700'}`}
+        >
+          <Turtle className="w-5 h-5 mb-1" />
+          <span className="text-xs font-bold">Танк</span>
+        </button>
+      </div>
       
       <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700 shadow-xl text-center mb-6">
         <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 border-2 transition-all ${
           isConnected ? 'bg-indigo-900/20 border-indigo-500 shadow-lg shadow-indigo-500/20' : 'bg-slate-900 border-slate-700 opacity-50'
         }`}>
-          {isUploading ? <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" /> : <Zap className={`w-10 h-10 ${isConnected ? 'text-emerald-400' : 'text-slate-500'}`} />}
+          {isUploading ? <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" /> : getSpeedIcon()}
         </div>
         
         {isUploading && (
@@ -140,8 +176,8 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
 
       <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 text-center mb-6">
         <p className="text-xs text-slate-400">
-          Максимальный размер файла: <span className="text-white font-bold">8 МБ</span>.
-          <br/>Файлы передаются напрямую.
+          Лимит: <span className="text-white font-bold">8 МБ</span>. <br/>
+          Если файл не доходит, выберите режим <b>"Танк"</b>.
         </p>
       </div>
 
