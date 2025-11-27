@@ -3,8 +3,9 @@ export interface TransferFile {
   name: string;
   size: number;
   type: string;
-  downloadUrl: string; // Ссылка на скачивание
-  expires: string;     // Когда удалится
+  downloadUrl?: string; // Может отсутствовать, если передаем base64
+  fileData?: string;    // Base64 данные для мелких файлов
+  expires: string;
   uploadedAt: number;
 }
 
@@ -16,8 +17,18 @@ export enum AppMode {
 
 export const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
-// Структура сообщения через MQTT
+// Типы сообщений
 export interface MqttMessage {
-  type: 'file-shared';
-  payload: TransferFile;
+  type: 'file-shared' | 'file-chunk';
+  payload: any;
+}
+
+export interface FileChunk {
+  fileId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  chunkIndex: number;
+  totalChunks: number;
+  data: string; // Base64 chunk
 }

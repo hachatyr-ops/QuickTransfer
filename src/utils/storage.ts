@@ -1,9 +1,9 @@
-import mqtt from 'mqtt';
-import { TransferFile } from '../types';
+import mqtt, { MqttClient } from 'mqtt';
+import { TransferFile, FileChunk, MqttMessage } from '../types';
 
-// Используем публичный брокер EMQX (бесплатный, поддерживает WebSockets SSL)
+// Брокер EMQX
 const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
-const TOPIC_PREFIX = 'quicktransfer/v7/session/';
+const TOPIC_PREFIX = 'quicktransfer/v8/session/';
 
 export const generateShortId = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -11,7 +11,6 @@ export const generateShortId = (): string => {
 
 export const getSessionTopic = (sessionId: string) => `${TOPIC_PREFIX}${sessionId}`;
 
-// Настройка клиента MQTT
 export const createMqttClient = () => {
   const clientId = 'client-' + Math.random().toString(16).substr(2, 8);
   return mqtt.connect(MQTT_BROKER, {
@@ -23,55 +22,87 @@ export const createMqttClient = () => {
   });
 };
 
-// --- Smart Upload Logic ---
+// --- CHUNK TRANSFER LOGIC (Для файлов < 500KB) ---
+const CHUNK_SIZE = 15 * 1024; // 15KB chunks (MQTT limit safe)
+
+export const sendFileViaChunks = async (
+  file: File, 
+  client: MqttClient, 
+  topic: string,
+  onProgress: (pct: number) => void
+): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      if (!e.target?.result) return reject('Read error');
+      
+      const base64Full = (e.target.result as string).split(',')[1];
+      const totalChunks = Math.ceil(base64Full.length / CHUNK_SIZE);
+      const fileId = Math.random().toString(36).substring(7);
+
+      console.log(`Starting chunk transfer: ${file.name}, ${totalChunks} chunks`);
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = start + CHUNK_SIZE;
+        const chunkData = base64Full.substring(start, end);
+
+        const chunk: FileChunk = {
+          fileId,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          chunkIndex: i,
+          totalChunks,
+          data: chunkData
+        };
+
+        const msg: MqttMessage = {
+          type: 'file-chunk',
+          payload: chunk
+        };
+
+        client.publish(topic, JSON.stringify(msg), { qos: 0 }); // QoS 0 for speed
+        
+        onProgress(Math.round(((i + 1) / totalChunks) * 100));
+        
+        // Маленькая задержка, чтобы не забить канал
+        await new Promise(r => setTimeout(r, 10)); 
+      }
+      resolve();
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+
+// --- CLOUD UPLOAD LOGIC (Для файлов > 500KB) ---
 
 interface UploadResult {
   link: string;
   expiry: string;
 }
 
-// 1. File.io (Best privacy, auto-delete)
 const uploadToFileIo = async (file: File): Promise<UploadResult> => {
   const formData = new FormData();
   formData.append('file', file);
   const response = await fetch('https://file.io/?expires=1d', { method: 'POST', body: formData });
-  if (!response.ok) throw new Error('File.io error');
+  if (!response.ok) throw new Error('File.io busy');
   const data = await response.json();
   if (!data.success) throw new Error(data.message);
   return { link: data.link, expiry: '1 скачивание' };
 };
 
-// 2. TmpFiles.org (Backup, 60 min retention)
-const uploadToTmpFiles = async (file: File): Promise<UploadResult> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  // Используем прокси или прямой запрос (может блокироваться CORS, поэтому это fallback)
-  const response = await fetch('https://tmpfiles.org/api/v1/upload', { method: 'POST', body: formData });
-  if (!response.ok) throw new Error('TmpFiles error');
-  const data = await response.json();
-  if (data.status !== 'success') throw new Error('Upload failed');
-  // TmpFiles returns a view URL, we need to convert it to download URL usually, 
-  // but for simplicity we return the view url. Users can download from there.
-  return { link: data.data.url, expiry: '60 минут' };
-};
-
-// Main Upload Function with Fallbacks
+// Main Upload Function
 export const smartUpload = async (file: File): Promise<UploadResult> => {
   // Попытка 1: File.io
   try {
-    console.log('Trying upload to File.io...');
     return await uploadToFileIo(file);
   } catch (err) {
-    console.warn('File.io failed, switching to backup...', err);
+    console.warn('File.io failed, trying fallback...', err);
   }
 
-  // Попытка 2: TmpFiles (или другой сервис, если найдем надежный с CORS)
-  // К сожалению, большинство бесплатных API блокируют запросы из браузера (CORS).
-  // File.io - один из немногих, кто разрешает.
-  // Если File.io упал, скорее всего проблема в размере файла или лимитах IP.
-  
-  // Вернем ошибку, чтобы пользователь попробовал позже или файл поменьше
-  throw new Error('Все серверы заняты. Попробуйте файл поменьше или через VPN.');
+  throw new Error('Облачные серверы перегружены. Для надежности передавайте файлы меньше 500 КБ (они летят напрямую).');
 };
 
 export const formatBytes = (bytes: number, decimals = 2) => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { TransferFile, SESSION_DURATION_MS, MqttMessage } from '../types';
+import { TransferFile, SESSION_DURATION_MS, MqttMessage, FileChunk } from '../types';
 import { getSessionTopic, createMqttClient, formatBytes } from '../utils/storage';
 import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { MqttClient } from 'mqtt';
@@ -16,47 +16,91 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
   const [isConnected, setIsConnected] = useState(false);
   const clientRef = useRef<MqttClient | null>(null);
 
-  // Инициализация MQTT
+  // Хранилище для собираемых кусков файлов
+  // Map<fileId, { chunks: string[], total: number, name: string, type: string, size: number }>
+  const chunksBuffer = useRef<Map<string, any>>(new Map());
+
   useEffect(() => {
     const client = createMqttClient();
     const topic = getSessionTopic(sessionId);
 
     client.on('connect', () => {
-      console.log('Host connected to MQTT broker');
+      console.log('Host connected');
       setIsConnected(true);
-      client.subscribe(topic, (err) => {
-        if (!err) {
-          console.log(`Subscribed to ${topic}`);
-        }
-      });
+      client.subscribe(topic);
     });
 
     client.on('message', (topic, message) => {
       try {
         const parsed: MqttMessage = JSON.parse(message.toString());
+
+        // 1. Обычный файл (ссылка)
         if (parsed.type === 'file-shared') {
           setFiles(prev => [parsed.payload, ...prev]);
         }
+
+        // 2. Кусок файла (Chunk)
+        if (parsed.type === 'file-chunk') {
+          const chunk: FileChunk = parsed.payload;
+          const { fileId, chunkIndex, totalChunks, data, fileName, fileType, fileSize } = chunk;
+
+          if (!chunksBuffer.current.has(fileId)) {
+            chunksBuffer.current.set(fileId, {
+              chunks: new Array(totalChunks).fill(null),
+              receivedCount: 0,
+              fileName,
+              fileType,
+              fileSize
+            });
+          }
+
+          const buffer = chunksBuffer.current.get(fileId);
+          if (buffer.chunks[chunkIndex] === null) {
+            buffer.chunks[chunkIndex] = data;
+            buffer.receivedCount++;
+          }
+
+          // Если собрали все куски
+          if (buffer.receivedCount === totalChunks) {
+            console.log(`File assembled: ${fileName}`);
+            
+            // Собираем Base64
+            const fullBase64 = buffer.chunks.join('');
+            const downloadUrl = `data:${fileType};base64,${fullBase64}`;
+            
+            const newFile: TransferFile = {
+              id: fileId,
+              name: fileName,
+              size: fileSize,
+              type: fileType,
+              downloadUrl: downloadUrl,
+              expires: 'В памяти браузера',
+              uploadedAt: Date.now()
+            };
+
+            setFiles(prev => [newFile, ...prev]);
+            chunksBuffer.current.delete(fileId); // Очистка памяти
+          }
+        }
+
       } catch (e) {
         console.error('Failed to parse message', e);
       }
     });
 
     client.on('offline', () => setIsConnected(false));
-    client.on('reconnect', () => setIsConnected(false)); // Пока переподключается - не готов
+    client.on('reconnect', () => setIsConnected(false));
 
     clientRef.current = client;
 
     // Таймер
     const startTime = Date.now();
     const endTime = startTime + SESSION_DURATION_MS;
-
     const timerInterval = setInterval(() => {
       const now = Date.now();
       const diff = endTime - now;
-      if (diff <= 0) {
-        onExit();
-      } else {
+      if (diff <= 0) onExit();
+      else {
         const minutes = Math.floor((diff / 1000 / 60) % 60);
         const seconds = Math.floor((diff / 1000) % 60);
         setTimeLeft(`${minutes}:${seconds.toString().padStart(2, '0')}`);
@@ -80,7 +124,6 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
 
   return (
     <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in pb-12">
-      {/* Sidebar */}
       <div className="md:col-span-1 space-y-4">
         <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl flex flex-col items-center text-center">
           <h2 className="text-slate-400 text-sm font-medium mb-4 uppercase tracking-wider">Подключение</h2>
@@ -102,73 +145,40 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
               <Smartphone className="w-4 h-4 text-indigo-400" />
               <span className="text-sm font-mono text-indigo-300">ID: {sessionId}</span>
             </div>
-
             <div className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-full border ${
-              isConnected
-                ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' 
-                : 'bg-red-900/20 border-red-700 text-red-500'
+              isConnected ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-red-900/20 border-red-700 text-red-500'
             }`}>
               {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              <span className="text-xs font-medium">
-                {isConnected ? 'В сети' : 'Нет связи'}
-              </span>
+              <span className="text-xs font-medium">{isConnected ? 'В сети' : 'Нет связи'}</span>
             </div>
           </div>
         </div>
-
-        <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-400 text-sm">Истекает через</span>
-            <Clock className="w-4 h-4 text-orange-400" />
-          </div>
-          <div className="text-3xl font-mono font-bold text-white text-center">
-            {timeLeft}
-          </div>
-        </div>
-
-        <button 
-          onClick={onExit}
-          className="w-full py-3 flex items-center justify-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>Завершить сессию</span>
+        <button onClick={onExit} className="w-full py-3 flex items-center justify-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors">
+          <Trash2 className="w-4 h-4" /> <span>Завершить сессию</span>
         </button>
       </div>
 
-      {/* Main Content */}
       <div className="md:col-span-2">
         <div className="bg-slate-800 rounded-2xl border border-slate-700 shadow-xl min-h-[500px] flex flex-col">
           <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-               Полученные файлы
-            </h2>
-            <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full">
-              {files.length} шт.
-            </span>
+            <h2 className="text-xl font-semibold flex items-center gap-2">Полученные файлы</h2>
+            <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full">{files.length} шт.</span>
           </div>
-
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {files.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4 opacity-50">
                 <Download className="w-16 h-16 stroke-1" />
-                <p>Отсканируйте код и отправьте файл...</p>
+                <p>Отправьте файл с телефона...</p>
               </div>
             ) : (
               files.map((file) => (
                 <div key={file.id} className="group flex items-center p-4 bg-slate-900/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-indigo-500/30 rounded-xl transition-all duration-200">
-                  <div className="p-3 bg-slate-800 rounded-lg mr-4 group-hover:scale-110 transition-transform">
-                    {getFileIcon(file.type)}
-                  </div>
+                  <div className="p-3 bg-slate-800 rounded-lg mr-4">{getFileIcon(file.type)}</div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-medium text-slate-200 truncate">{file.name}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{formatBytes(file.size)} • Сгорит через 24ч</p>
+                    <p className="text-xs text-slate-500 mt-1">{formatBytes(file.size)}</p>
                   </div>
-                  <a 
-                    href={file.downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
-                  >
+                  <a href={file.downloadUrl} download={file.name} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
                     <Download className="w-4 h-4" /> Скачать
                   </a>
                 </div>
