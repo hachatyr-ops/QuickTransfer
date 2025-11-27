@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TransferFile, SESSION_DURATION_MS, MqttMessage, FileChunk } from '../types';
 import { getSessionTopic, createMqttClient, formatBytes } from '../utils/storage';
-import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 
 interface HostSessionProps {
@@ -14,10 +14,10 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
   const [files, setFiles] = useState<TransferFile[]>([]);
   const [timeLeft, setTimeLeft] = useState<string>('30:00');
   const [isConnected, setIsConnected] = useState(false);
-  const clientRef = useRef<MqttClient | null>(null);
+  
+  // Состояние приема для UI
+  const [receivingState, setReceivingState] = useState<{name: string, progress: number} | null>(null);
 
-  // Хранилище для собираемых кусков файлов
-  // Map<fileId, { chunks: string[], total: number, name: string, type: string, size: number }>
   const chunksBuffer = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
@@ -34,12 +34,6 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
       try {
         const parsed: MqttMessage = JSON.parse(message.toString());
 
-        // 1. Обычный файл (ссылка)
-        if (parsed.type === 'file-shared') {
-          setFiles(prev => [parsed.payload, ...prev]);
-        }
-
-        // 2. Кусок файла (Chunk)
         if (parsed.type === 'file-chunk') {
           const chunk: FileChunk = parsed.payload;
           const { fileId, chunkIndex, totalChunks, data, fileName, fileType, fileSize } = chunk;
@@ -59,10 +53,15 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
             buffer.chunks[chunkIndex] = data;
             buffer.receivedCount++;
           }
+          
+          // Обновляем UI прогресс
+          const pct = Math.round((buffer.receivedCount / totalChunks) * 100);
+          setReceivingState({ name: fileName, progress: pct });
 
           // Если собрали все куски
           if (buffer.receivedCount === totalChunks) {
             console.log(`File assembled: ${fileName}`);
+            setReceivingState(null);
             
             // Собираем Base64
             const fullBase64 = buffer.chunks.join('');
@@ -74,7 +73,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
               size: fileSize,
               type: fileType,
               downloadUrl: downloadUrl,
-              expires: 'В памяти браузера',
+              expires: 'Локально',
               uploadedAt: Date.now()
             };
 
@@ -90,8 +89,6 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
 
     client.on('offline', () => setIsConnected(false));
     client.on('reconnect', () => setIsConnected(false));
-
-    clientRef.current = client;
 
     // Таймер
     const startTime = Date.now();
@@ -164,6 +161,19 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
             <h2 className="text-xl font-semibold flex items-center gap-2">Полученные файлы</h2>
             <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full">{files.length} шт.</span>
           </div>
+          
+          {receivingState && (
+            <div className="px-6 py-3 bg-indigo-900/30 border-b border-indigo-500/20">
+              <div className="flex justify-between text-xs text-indigo-300 mb-1">
+                 <span>Прием: {receivingState.name}</span>
+                 <span>{receivingState.progress}%</span>
+              </div>
+              <div className="w-full bg-slate-700 h-1 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500 transition-all duration-300" style={{width: `${receivingState.progress}%`}}></div>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {files.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4 opacity-50">
@@ -172,13 +182,13 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
               </div>
             ) : (
               files.map((file) => (
-                <div key={file.id} className="group flex items-center p-4 bg-slate-900/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-indigo-500/30 rounded-xl transition-all duration-200">
+                <div key={file.id} className="group flex items-center p-4 bg-slate-900/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-emerald-500/30 rounded-xl transition-all duration-200">
                   <div className="p-3 bg-slate-800 rounded-lg mr-4">{getFileIcon(file.type)}</div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-medium text-slate-200 truncate">{file.name}</h3>
                     <p className="text-xs text-slate-500 mt-1">{formatBytes(file.size)}</p>
                   </div>
-                  <a href={file.downloadUrl} download={file.name} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
+                  <a href={file.downloadUrl} download={file.name} className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
                     <Download className="w-4 h-4" /> Скачать
                   </a>
                 </div>
