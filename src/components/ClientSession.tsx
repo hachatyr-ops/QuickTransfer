@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MqttMessage, TransferFile } from '../types';
-import { getSessionTopic, createMqttClient, uploadToFileIo } from '../utils/storage';
+import { getSessionTopic, createMqttClient, smartUpload } from '../utils/storage';
 import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2 } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 
@@ -40,10 +40,10 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
       for (const file of files) {
         setUploadProgress(`Загрузка ${file.name}...`);
         try {
-          // 1. Загружаем на File.io
-          const { link, expiry } = await uploadToFileIo(file);
+          // ИСПОЛЬЗУЕМ SMART UPLOAD
+          const { link, expiry } = await smartUpload(file);
           
-          // 2. Формируем сообщение
+          // Формируем сообщение
           const messagePayload: TransferFile = {
             id: Math.random().toString(36).substring(7),
             name: file.name,
@@ -59,11 +59,11 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
             payload: messagePayload
           };
 
-          // 3. Отправляем ссылку на ПК через MQTT
+          // Отправляем ссылку на ПК через MQTT
           clientRef.current?.publish(getSessionTopic(sessionId), JSON.stringify(mqttMsg), { qos: 1 });
           
-        } catch (error) {
-          alert(`Ошибка загрузки ${file.name}. Попробуйте файл поменьше.`);
+        } catch (error: any) {
+          alert(`Ошибка загрузки ${file.name}: ${error.message}`);
           console.error(error);
         }
       }
