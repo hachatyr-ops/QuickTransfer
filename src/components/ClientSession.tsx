@@ -10,13 +10,14 @@ interface ClientSessionProps {
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB Limit
+const CONN_TIMEOUT_MS = 60000; // 60 seconds timeout for mobile networks
 
 const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<TransferFile[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error' | 'timeout'>('connecting');
   const [logs, setLogs] = useState<string[]>([]);
-  const [showLogs, setShowLogs] = useState(true); // Default to true for debugging
+  const [showLogs, setShowLogs] = useState(true);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const peerRef = useRef<Peer | null>(null);
@@ -30,23 +31,23 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
 
   const connectToPeer = useCallback(() => {
     setConnectionStatus('connecting');
-    addLog('--- Start Connection v3.0 ---');
+    addLog('--- Start Connection v6.2 ---');
     
     if (peerRef.current) {
       peerRef.current.destroy();
     }
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
-    // Timeout safety
+    // Extended Timeout safety
     timeoutRef.current = setTimeout(() => {
       setConnectionStatus((prev) => {
         if (prev === 'connecting') {
-          addLog('ERROR: Connection Timeout (15s)');
+          addLog(`ERROR: Connection Timeout (${CONN_TIMEOUT_MS/1000}s)`);
           return 'timeout';
         }
         return prev;
       });
-    }, 15000);
+    }, CONN_TIMEOUT_MS);
 
     const peer = new Peer(PEER_CONFIG);
     const hostPeerId = getPeerId(sessionId);
@@ -55,35 +56,43 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
       addLog(`Client ID: ${id}`);
       addLog(`Target Host: ${hostPeerId}`);
       
-      const conn = peer.connect(hostPeerId, { reliable: true });
+      // Slight delay to ensure peer is ready before connecting
+      setTimeout(() => {
+        addLog('Initiating handshake...');
+        const conn = peer.connect(hostPeerId, { reliable: true });
 
-      conn.on('open', () => {
-        addLog('>>> CONNECTED <<<');
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        setConnectionStatus('connected');
-        connRef.current = conn;
-      });
+        conn.on('open', () => {
+          addLog('>>> CONNECTED <<<');
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          setConnectionStatus('connected');
+          connRef.current = conn;
+        });
 
-      conn.on('close', () => {
-        addLog('Connection Closed');
-        setConnectionStatus('disconnected');
-        connRef.current = null;
-      });
+        conn.on('close', () => {
+          addLog('Connection Closed');
+          setConnectionStatus('disconnected');
+          connRef.current = null;
+        });
 
-      conn.on('error', (err) => {
-        addLog(`CONN ERROR: ${err}`);
-        setConnectionStatus('error');
-      });
-      
-      conn.peerConnection.onicecandidate = (event) => {
-         if (event.candidate) {
-             addLog(`ICE: ${event.candidate.candidate.substring(0, 20)}...`);
-         }
-      };
-      
-      conn.peerConnection.oniceconnectionstatechange = () => {
-          addLog(`ICE State: ${conn.peerConnection.iceConnectionState}`);
-      };
+        conn.on('error', (err) => {
+          addLog(`CONN ERROR: ${err}`);
+          setConnectionStatus('error');
+        });
+        
+        conn.peerConnection.onicecandidate = (event) => {
+           if (event.candidate) {
+               addLog(`ICE Candidate found`);
+           }
+        };
+        
+        conn.peerConnection.oniceconnectionstatechange = () => {
+            const state = conn.peerConnection.iceConnectionState;
+            addLog(`ICE State: ${state}`);
+            if (state === 'checking') {
+               addLog('Negotiating connection through NAT...');
+            }
+        };
+      }, 500);
     });
 
     peer.on('error', (err: any) => {
@@ -148,11 +157,11 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
 
   const getConnectionStatusUI = () => {
     switch(connectionStatus) {
-      case 'connecting': return <span className="text-yellow-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> ...</span>;
-      case 'connected': return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3" /> OK</span>;
-      case 'disconnected': return <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3" /> OFF</span>;
-      case 'timeout': return <span className="text-orange-400 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> !</span>;
-      case 'error': return <span className="text-red-500 flex items-center gap-1">ERR</span>;
+      case 'connecting': return <span className="text-yellow-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Подключение...</span>;
+      case 'connected': return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3" /> Стабильно</span>;
+      case 'disconnected': return <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3" /> Разрыв</span>;
+      case 'timeout': return <span className="text-orange-400 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Тайм-аут</span>;
+      case 'error': return <span className="text-red-500 flex items-center gap-1">Ошибка</span>;
     }
   };
 
@@ -171,6 +180,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         {connectionStatus !== 'connected' && connectionStatus !== 'connecting' && (
            <button onClick={connectToPeer} className="text-xs bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-lg flex items-center gap-1">
              <RefreshCw className="w-3 h-3" />
+             <span>Повтор</span>
            </button>
         )}
       </div>

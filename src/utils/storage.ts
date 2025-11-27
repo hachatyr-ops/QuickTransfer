@@ -11,12 +11,11 @@ export const generateShortId = (): string => {
 export const getPeerId = (shortId: string) => `${ID_PREFIX}${shortId}`;
 
 // PeerJS Configuration
-// Added multiple STUN servers to increase chance of NAT traversal on mobile networks
-// Added pingInterval to keep WebSocket alive
+// Added Mozilla and other public STUN servers to increase chance of NAT traversal
 export const PEER_CONFIG: PeerOptions = {
   debug: 1,
   secure: true,
-  pingInterval: 5000, // Send heartbeat every 5 seconds to prevent connection drop
+  pingInterval: 5000, // Heartbeat
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -24,7 +23,9 @@ export const PEER_CONFIG: PeerOptions = {
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' }
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      { urls: 'stun:stun.services.mozilla.com' },
+      { urls: 'stun:stun.qq.com:3478' }
     ],
     iceCandidatePoolSize: 10,
   }
