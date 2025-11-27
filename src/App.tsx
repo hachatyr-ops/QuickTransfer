@@ -4,7 +4,7 @@ import HostSession from './components/HostSession';
 import ClientSession from './components/ClientSession';
 import { AppMode } from './types';
 import { generateShortId } from './utils/storage';
-import { Monitor, Smartphone, ArrowRight, Globe } from 'lucide-react';
+import { Monitor, Smartphone, ArrowRight, ShieldCheck } from 'lucide-react';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.LANDING);
@@ -70,8 +70,8 @@ const App: React.FC = () => {
                 Передавайте файлы мгновенно.
               </h2>
               <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-                Без регистрации и приложений. Просто отсканируйте QR-код. 
-                Временное P2P соединение для вашей безопасности.
+                Никаких регистраций, облаков и приложений. <br/>
+                Простое и безопасное соединение между вашими устройствами.
               </p>
             </div>
 
@@ -87,7 +87,7 @@ const App: React.FC = () => {
                 </div>
                 <h3 className="text-2xl font-bold mb-3 text-white">Я — Компьютер</h3>
                 <p className="text-slate-400 mb-6">
-                  Создать новую сессию и получить QR-код для приема файлов.
+                  Получить QR-код для приема файлов с телефона.
                 </p>
                 <div className="mt-auto flex items-center gap-2 text-indigo-400 font-medium group-hover:text-indigo-300">
                   Начать прием <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -124,12 +124,11 @@ const App: React.FC = () => {
             </div>
 
             <div className="mt-16 bg-indigo-900/20 rounded-xl p-4 flex items-start gap-3 max-w-2xl border border-indigo-500/20">
-              <Globe className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
+              <ShieldCheck className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-slate-300 text-left">
-                <p className="font-semibold text-indigo-200 mb-1">Работает через интернет!</p>
+                <p className="font-semibold text-indigo-200 mb-1">Полная конфиденциальность</p>
                 <p>
-                  Теперь устройства могут быть в разных сетях. Мы используем технологию WebRTC для прямой связи.
-                  Файлы передаются напрямую с телефона на компьютер, не сохраняясь на серверах.
+                  Ваши файлы не сохраняются на серверах. Данные "нарезаются" на части и передаются через защищенный канал напрямую в память получателя. После закрытия вкладки данные исчезают навсегда.
                 </p>
               </div>
             </div>

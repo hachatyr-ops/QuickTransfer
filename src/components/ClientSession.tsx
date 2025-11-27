@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getSessionTopic, createMqttClient, sendFileViaChunks, formatBytes } from '../utils/storage';
-import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock, Gauge, Rabbit, Turtle, ShieldCheck, AlertCircle, ArrowRightLeft } from 'lucide-react';
+import { Wifi, Loader2, Rabbit, Turtle, ShieldCheck, AlertCircle, ArrowRightLeft, LogOut, CheckCircle, Clock } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 import { TransferSpeed, ConnectionStatus, MqttMessage } from '../types';
 
@@ -58,17 +58,16 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
         client.subscribe(topic);
 
         // Пытаемся стучаться каждые 1.5 секунды, пока не ответят (или пока не истечет время)
-        // Это нужно, чтобы дать второму устройству время на переключение роли/подключение
         sendHandshake(); // Сразу
         handshakeIntervalRef.current = setInterval(sendHandshake, 1500);
 
-        // Если через 10 секунд (увеличили время) не ответят - фейл
+        // Если через 15 секунд не ответят - фейл (чуть увеличили время)
         handshakeTimeoutRef.current = setTimeout(() => {
             if (connectionStatus !== 'CONNECTED') {
                 clearInterval(handshakeIntervalRef.current);
                 setConnectionStatus('FAILED');
             }
-        }, 10000);
+        }, 15000);
     });
 
     client.on('message', (t, message) => {
@@ -176,16 +175,24 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
     }
   };
 
+  const getSpeedDescription = () => {
+    switch(speed) {
+        case 'FAST': return 'Идеально для фото и скриншотов < 1 МБ';
+        case 'NORMAL': return 'Баланс скорости и надежности (1-5 МБ)';
+        case 'SLOW': return 'Медленно, но надежно (для плохой сети)';
+    }
+  };
+
   // UI Статуса подключения
   const getStatusUI = () => {
       switch(connectionStatus) {
           case 'CONNECTING': 
           case 'VERIFYING':
-              return <span className="text-yellow-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Поиск сессии...</span>;
+              return <span className="text-yellow-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Поиск...</span>;
           case 'CONNECTED':
-              return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> Подключено</span>;
+              return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> Связь есть</span>;
           case 'FAILED':
-              return <span className="text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Сессия не найдена (404)</span>;
+              return <span className="text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Нет связи (404)</span>;
       }
   };
 
@@ -193,22 +200,33 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
 
   return (
     <div className="max-w-md mx-auto w-full h-full flex flex-col animate-fade-in pb-8">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center">
-            <button onClick={onExit} className="p-2 -ml-2 text-slate-400 hover:text-white">
-            <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="ml-2">
-            <h2 className="text-lg font-semibold text-white">Прямая отправка</h2>
-             <div className="text-xs font-mono flex items-center gap-1">
-                {getStatusUI()}
-             </div>
-            </div>
+      {/* Шапка клиента */}
+      <div className="flex items-center justify-between mb-4 bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+        <div className="flex flex-col">
+           <h2 className="text-lg font-bold text-white">Прямая отправка</h2>
+           <div className="text-xs font-mono mt-0.5">
+               {getStatusUI()}
+           </div>
         </div>
+        <button 
+            onClick={onExit} 
+            className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
+        >
+            <LogOut className="w-3 h-3" /> Выход
+        </button>
       </div>
 
+      {/* Смена роли (сверху) */}
+      <button 
+          onClick={handleSwitchClick}
+          disabled={!isReady}
+          className="w-full mb-6 py-3 px-4 rounded-xl font-medium text-amber-500 bg-amber-600/10 border border-amber-500/30 hover:bg-amber-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ArrowRightLeft className="w-4 h-4" /> Поменяться местами (Прием)
+      </button>
+
       {/* Выбор скорости */}
-      <div className="bg-slate-800 rounded-xl p-3 mb-4 border border-slate-700 grid grid-cols-3 gap-2">
+      <div className="bg-slate-800 rounded-xl p-3 mb-2 border border-slate-700 grid grid-cols-3 gap-2">
         <button 
           onClick={() => setSpeed('FAST')}
           className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${speed === 'FAST' ? 'bg-pink-900/30 border-pink-500 text-white' : 'border-transparent text-slate-500 hover:bg-slate-700'}`}
@@ -231,7 +249,11 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
           <span className="text-xs font-bold">Танк</span>
         </button>
       </div>
+      <div className="text-center text-xs text-slate-400 mb-6 font-medium">
+          {getSpeedDescription()}
+      </div>
       
+      {/* Зона загрузки */}
       <div className={`bg-slate-800 rounded-2xl p-8 border shadow-xl text-center mb-6 transition-all duration-300 ${connectionStatus === 'FAILED' ? 'border-red-500/50 bg-red-900/10' : 'border-slate-700'}`}>
         <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 border-2 transition-all ${
           isReady ? 'bg-indigo-900/20 border-indigo-500 shadow-lg shadow-indigo-500/20' : 
@@ -273,16 +295,6 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
                 <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" id="file-upload" disabled={!isReady} />
             </>
         )}
-      </div>
-
-      <div className="flex gap-2 mb-6">
-        <button 
-          onClick={handleSwitchClick}
-          disabled={!isReady}
-          className="flex-1 py-3 px-4 rounded-xl font-medium text-amber-500 bg-amber-600/10 border border-amber-500/30 hover:bg-amber-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <ArrowRightLeft className="w-4 h-4" /> Поменяться местами
-        </button>
       </div>
 
       {/* История отправки */}
