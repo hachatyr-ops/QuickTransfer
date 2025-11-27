@@ -23,8 +23,8 @@ export const createMqttClient = () => {
 };
 
 // --- CHUNK TRANSFER LOGIC ---
-// Оптимизация для файлов до 8-10 МБ
-const CHUNK_SIZE = 32 * 1024; // 32KB chunks (Безопасный размер для большинства брокеров)
+// Оптимизация для надежности на публичных брокерах
+const CHUNK_SIZE = 32 * 1024; // 32KB
 
 export const sendFileViaChunks = async (
   file: File, 
@@ -73,17 +73,24 @@ export const sendFileViaChunks = async (
           payload: chunk
         };
 
-        // Отправляем чанк. QoS 0 быстрее, но менее надежно. 
-        // Используем QoS 0, но с задержкой, чтобы не забить канал.
+        // Отправляем чанк
         client.publish(topic, JSON.stringify(msg), { qos: 0 });
         
         const percent = Math.round(((i + 1) / totalChunks) * 100);
         onProgress(percent);
         
-        // ВАЖНО: Задержка (Throttle). 
-        // Если слать без задержки, брокер отключит нас за спам (Flood Protection).
-        // 30-50мс достаточно для стабильности.
-        await new Promise(r => setTimeout(r, 40)); 
+        // --- АЛГОРИТМ "ВЕЖЛИВОСТИ" ---
+        // 1. Базовая задержка увеличена до 100мс
+        let delay = 100;
+
+        // 2. Каждые 10 чанков (320КБ) делаем "большую перемену", 
+        // чтобы сбросить счетчики спама на брокере.
+        if (i > 0 && i % 10 === 0) {
+            delay = 1000; // 1 секунда паузы
+            console.log('Cooldown pause...');
+        }
+
+        await new Promise(r => setTimeout(r, delay)); 
       }
       resolve();
     };

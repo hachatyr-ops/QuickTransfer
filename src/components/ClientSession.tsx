@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getSessionTopic, createMqttClient, sendFileViaChunks, formatBytes } from '../utils/storage';
-import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap } from 'lucide-react';
+import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 
 interface ClientSessionProps {
@@ -8,10 +8,17 @@ interface ClientSessionProps {
   onExit: () => void;
 }
 
+interface HistoryItem {
+  name: string;
+  size: number;
+  time: string;
+}
+
 const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [isConnected, setIsConnected] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clientRef = useRef<MqttClient | null>(null);
@@ -60,6 +67,15 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
                getSessionTopic(sessionId), 
                (pct) => setUploadProgress(`Передача ${file.name}: ${pct}%`)
              );
+
+             // Добавляем в историю
+             const newItem: HistoryItem = {
+               name: file.name,
+               size: file.size,
+               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+             };
+             setHistory(prev => [newItem, ...prev]);
+
            } else {
              throw new Error("Lost connection");
            }
@@ -73,7 +89,6 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
       setUploadProgress('');
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      alert('Файлы успешно отправлены!');
     }
   };
 
@@ -106,6 +121,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
             <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
                <div className="h-full bg-emerald-500 transition-all duration-300 animate-pulse" style={{width: '100%'}}></div>
             </div>
+            <p className="text-xs text-slate-400 mt-2">Не закрывайте браузер</p>
           </div>
         )}
 
@@ -122,11 +138,37 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" id="file-upload" disabled={!isConnected || isUploading} />
       </div>
 
-      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 text-center">
+      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 text-center mb-6">
         <p className="text-xs text-slate-400">
           Максимальный размер файла: <span className="text-white font-bold">8 МБ</span>.
-          <br/>Файлы передаются напрямую, без облака.
+          <br/>Файлы передаются напрямую.
         </p>
+      </div>
+
+      {/* История отправки */}
+      <div className="flex-1">
+        <h3 className="text-sm font-medium text-slate-400 mb-3 px-2">История отправки</h3>
+        <div className="space-y-2">
+            {history.length === 0 ? (
+                <p className="text-xs text-slate-600 text-center py-4">Нет отправленных файлов</p>
+            ) : (
+                history.map((item, idx) => (
+                    <div key={idx} className="bg-slate-800/50 p-3 rounded-lg flex items-center justify-between border border-slate-700/50">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                            <div className="min-w-0">
+                                <p className="text-sm text-slate-200 truncate">{item.name}</p>
+                                <p className="text-xs text-slate-500">{formatBytes(item.size)}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-slate-500">
+                            <Clock className="w-3 h-3" />
+                            <span>{item.time}</span>
+                        </div>
+                    </div>
+                ))
+            )}
+        </div>
       </div>
     </div>
   );
