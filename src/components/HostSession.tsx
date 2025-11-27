@@ -181,7 +181,10 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
           </div>
         </div>
 
-        <button onClick={onExit} className="w-full py-3 flex items-center justify-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors">
+        <button 
+            onClick={onExit} 
+            className="w-full py-3 flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40 rounded-xl transition-all shadow-sm"
+        >
           <Trash2 className="w-4 h-4" /> <span>Завершить сессию</span>
         </button>
       </div>
