@@ -34,6 +34,20 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
       try {
         const parsed: MqttMessage = JSON.parse(message.toString());
 
+        // --- ЛОГИКА РУКОПОЖАТИЯ ---
+        if (parsed.type === 'handshake-syn') {
+            const clientId = parsed.payload.clientId;
+            console.log(`Handshake request from: ${clientId}`);
+            
+            // Отправляем подтверждение (ACK), что мы живы
+            const ackMsg: MqttMessage = {
+                type: 'handshake-ack',
+                payload: { targetId: clientId }
+            };
+            client.publish(topic, JSON.stringify(ackMsg));
+            return;
+        }
+
         if (parsed.type === 'file-chunk') {
           const chunk: FileChunk = parsed.payload;
           const { fileId, chunkIndex, totalChunks, data, fileName, fileType, fileSize } = chunk;

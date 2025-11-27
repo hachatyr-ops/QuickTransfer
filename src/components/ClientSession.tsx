@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getSessionTopic, createMqttClient, sendFileViaChunks, formatBytes } from '../utils/storage';
-import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock, Gauge, Rabbit, Turtle, ShieldCheck } from 'lucide-react';
+import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock, Gauge, Rabbit, Turtle, ShieldCheck, AlertCircle } from 'lucide-react';
 import { MqttClient } from 'mqtt';
-import { TransferSpeed } from '../types';
+import { TransferSpeed, ConnectionStatus, MqttMessage } from '../types';
 
 interface ClientSessionProps {
   sessionId: string;
@@ -18,30 +18,69 @@ interface HistoryItem {
 const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
-  const [isConnected, setIsConnected] = useState(false);
+  
+  // Состояние верификации ID
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('CONNECTING');
+  
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [speed, setSpeed] = useState<TransferSpeed>('NORMAL');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clientRef = useRef<MqttClient | null>(null);
+  const handshakeTimeoutRef = useRef<any>(null);
 
   // Жесткий лимит 8 МБ для браузерного JS
   const MAX_SIZE = 8 * 1024 * 1024; 
 
   useEffect(() => {
     const client = createMqttClient();
-    client.on('connect', () => setIsConnected(true));
-    client.on('offline', () => setIsConnected(false));
-    client.on('reconnect', () => setIsConnected(false));
+    const topic = getSessionTopic(sessionId);
+    // Уникальный ID для этого клиента, чтобы знать, кому отвечать
+    const myClientId = 'client-' + Math.random().toString(36).substring(7);
+
+    client.on('connect', () => {
+        // Как только подключились к MQTT - начинаем верификацию
+        setConnectionStatus('VERIFYING');
+        client.subscribe(topic);
+
+        // Отправляем сигнал "Рукопожатие"
+        const synMsg: MqttMessage = {
+            type: 'handshake-syn',
+            payload: { clientId: myClientId }
+        };
+        client.publish(topic, JSON.stringify(synMsg));
+
+        // Если через 3 секунды не ответят - значит ID неправильный или хост оффлайн
+        handshakeTimeoutRef.current = setTimeout(() => {
+            if (connectionStatus !== 'CONNECTED') {
+                setConnectionStatus('FAILED');
+            }
+        }, 3000);
+    });
+
+    client.on('message', (t, message) => {
+        try {
+            const parsed: MqttMessage = JSON.parse(message.toString());
+            // Если получили ответ лично для нас
+            if (parsed.type === 'handshake-ack' && parsed.payload.targetId === myClientId) {
+                clearTimeout(handshakeTimeoutRef.current);
+                setConnectionStatus('CONNECTED');
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    client.on('offline', () => setConnectionStatus('CONNECTING')); // Пытаемся переподключиться
     clientRef.current = client;
 
-    return () => { client.end(); };
-  }, []);
+    return () => { 
+        client.end(); 
+        if (handshakeTimeoutRef.current) clearTimeout(handshakeTimeoutRef.current);
+    };
+  }, [sessionId]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      if (!isConnected) {
-        alert('Нет соединения с сервером. Подождите...');
+      if (connectionStatus !== 'CONNECTED') {
         return;
       }
 
@@ -103,6 +142,21 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
     }
   };
 
+  // UI Статуса подключения
+  const getStatusUI = () => {
+      switch(connectionStatus) {
+          case 'CONNECTING': 
+          case 'VERIFYING':
+              return <span className="text-yellow-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Поиск сессии...</span>;
+          case 'CONNECTED':
+              return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> Подключено</span>;
+          case 'FAILED':
+              return <span className="text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Сессия не найдена (404)</span>;
+      }
+  };
+
+  const isReady = connectionStatus === 'CONNECTED' && !isUploading;
+
   return (
     <div className="max-w-md mx-auto w-full h-full flex flex-col animate-fade-in pb-8">
       <div className="flex items-center justify-between mb-4">
@@ -113,7 +167,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
             <div className="ml-2">
             <h2 className="text-lg font-semibold text-white">Прямая отправка</h2>
              <div className="text-xs font-mono flex items-center gap-1">
-                {isConnected ? <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> Подключено</span> : <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3"/> Поиск...</span>}
+                {getStatusUI()}
              </div>
             </div>
         </div>
@@ -144,11 +198,15 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         </button>
       </div>
       
-      <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700 shadow-xl text-center mb-6">
+      <div className={`bg-slate-800 rounded-2xl p-8 border shadow-xl text-center mb-6 transition-all duration-300 ${connectionStatus === 'FAILED' ? 'border-red-500/50 bg-red-900/10' : 'border-slate-700'}`}>
         <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 border-2 transition-all ${
-          isConnected ? 'bg-indigo-900/20 border-indigo-500 shadow-lg shadow-indigo-500/20' : 'bg-slate-900 border-slate-700 opacity-50'
+          isReady ? 'bg-indigo-900/20 border-indigo-500 shadow-lg shadow-indigo-500/20' : 
+          connectionStatus === 'FAILED' ? 'bg-red-900/20 border-red-500 text-red-500' :
+          'bg-slate-900 border-slate-700 opacity-50'
         }`}>
-          {isUploading ? <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" /> : getSpeedIcon()}
+          {isUploading ? <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" /> : 
+           connectionStatus === 'FAILED' ? <AlertCircle className="w-10 h-10" /> :
+           getSpeedIcon()}
         </div>
         
         {isUploading && (
@@ -161,17 +219,26 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
           </div>
         )}
 
-        <label
-          htmlFor="file-upload"
-          className={`block w-full py-4 px-6 rounded-xl font-bold text-lg transition-all transform active:scale-95 ${
-            isConnected && !isUploading
-              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl cursor-pointer'
-              : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-          }`}
-        >
-          {isUploading ? 'Идет передача...' : 'Выбрать файлы'}
-        </label>
-        <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" id="file-upload" disabled={!isConnected || isUploading} />
+        {connectionStatus === 'FAILED' ? (
+             <div className="text-red-400 text-sm font-medium py-4">
+                 ID сессии не найден.<br/>Проверьте цифры на компьютере.
+             </div>
+        ) : (
+            <>
+                <label
+                htmlFor="file-upload"
+                className={`block w-full py-4 px-6 rounded-xl font-bold text-lg transition-all transform active:scale-95 ${
+                    isReady
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl cursor-pointer'
+                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                }`}
+                >
+                {isUploading ? 'Идет передача...' : 
+                 connectionStatus === 'VERIFYING' ? 'Проверка ID...' : 'Выбрать файлы'}
+                </label>
+                <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" id="file-upload" disabled={!isReady} />
+            </>
+        )}
       </div>
 
       <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 text-center mb-6">
