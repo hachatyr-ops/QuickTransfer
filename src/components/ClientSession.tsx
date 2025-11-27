@@ -3,11 +3,13 @@ import { getSessionTopic, createMqttClient, sendFileViaChunks, formatBytes } fro
 import { Wifi, Loader2, Rabbit, Turtle, ShieldCheck, AlertCircle, ArrowRightLeft, LogOut, CheckCircle, Clock } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 import { TransferSpeed, ConnectionStatus, MqttMessage } from '../types';
+import { translations } from '../utils/translations';
 
 interface ClientSessionProps {
   sessionId: string;
   onExit: () => void;
   onSwitchRole: () => void;
+  t: typeof translations.RU.client;
 }
 
 interface HistoryItem {
@@ -16,7 +18,7 @@ interface HistoryItem {
   time: string;
 }
 
-const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwitchRole }) => {
+const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwitchRole, t }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   
@@ -122,7 +124,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
       // Проверка размеров
       for (const file of files) {
         if (file.size > MAX_SIZE) {
-          alert(`Файл "${file.name}" слишком большой (${formatBytes(file.size)}).\nЛимит: 8 МБ.`);
+          alert(`File "${file.name}" is too large (${formatBytes(file.size)}).\nLimit: 8 MB.`);
           if (fileInputRef.current) fileInputRef.current.value = '';
           return;
         }
@@ -132,14 +134,14 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
 
       for (const file of files) {
         try {
-           setUploadProgress(`Отправка ${file.name}...`);
+           setUploadProgress(`${t.sent} ${file.name}...`);
            
            if (clientRef.current) {
              await sendFileViaChunks(
                file, 
                clientRef.current, 
                getSessionTopic(sessionId), 
-               (pct) => setUploadProgress(`Передача ${file.name}: ${pct}%`),
+               (pct) => setUploadProgress(`${t.sending} ${file.name}: ${pct}%`),
                speed
              );
 
@@ -156,7 +158,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
            }
           
         } catch (error: any) {
-          alert(`Ошибка ${file.name}: ${error.message}`);
+          alert(`Error ${file.name}: ${error.message}`);
           console.error(error);
         }
       }
@@ -177,9 +179,9 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
 
   const getSpeedDescription = () => {
     switch(speed) {
-        case 'FAST': return 'Идеально для фото и скриншотов < 1 МБ';
-        case 'NORMAL': return 'Баланс скорости и надежности (1-5 МБ)';
-        case 'SLOW': return 'Медленно, но надежно (для плохой сети)';
+        case 'FAST': return t.speedDescFast;
+        case 'NORMAL': return t.speedDescNormal;
+        case 'SLOW': return t.speedDescSlow;
     }
   };
 
@@ -188,11 +190,11 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
       switch(connectionStatus) {
           case 'CONNECTING': 
           case 'VERIFYING':
-              return <span className="text-yellow-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Поиск...</span>;
+              return <span className="text-yellow-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> {t.statusConnecting}</span>;
           case 'CONNECTED':
-              return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> Связь есть</span>;
+              return <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> {t.statusConnected}</span>;
           case 'FAILED':
-              return <span className="text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Нет связи (404)</span>;
+              return <span className="text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {t.statusFailed}</span>;
       }
   };
 
@@ -203,7 +205,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
       {/* Шапка клиента */}
       <div className="flex items-center justify-between mb-4 bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
         <div className="flex flex-col">
-           <h2 className="text-lg font-bold text-white">Прямая отправка</h2>
+           <h2 className="text-lg font-bold text-white">{t.title}</h2>
            <div className="text-xs font-mono mt-0.5">
                {getStatusUI()}
            </div>
@@ -212,7 +214,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
             onClick={onExit} 
             className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors"
         >
-            <LogOut className="w-3 h-3" /> Выход
+            <LogOut className="w-3 h-3" /> {t.exit}
         </button>
       </div>
 
@@ -222,7 +224,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
           disabled={!isReady}
           className="w-full mb-6 py-3 px-4 rounded-xl font-medium text-amber-500 bg-amber-600/10 border border-amber-500/30 hover:bg-amber-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <ArrowRightLeft className="w-4 h-4" /> Поменяться местами (Прием)
+        <ArrowRightLeft className="w-4 h-4" /> {t.switchRole}
       </button>
 
       {/* Выбор скорости */}
@@ -232,21 +234,21 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
           className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${speed === 'FAST' ? 'bg-pink-900/30 border-pink-500 text-white' : 'border-transparent text-slate-500 hover:bg-slate-700'}`}
         >
           <Rabbit className="w-5 h-5 mb-1" />
-          <span className="text-xs font-bold">Быстро</span>
+          <span className="text-xs font-bold">{t.speedFast}</span>
         </button>
         <button 
           onClick={() => setSpeed('NORMAL')}
           className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${speed === 'NORMAL' ? 'bg-emerald-900/30 border-emerald-500 text-white' : 'border-transparent text-slate-500 hover:bg-slate-700'}`}
         >
           <ShieldCheck className="w-5 h-5 mb-1" />
-          <span className="text-xs font-bold">Норма</span>
+          <span className="text-xs font-bold">{t.speedNormal}</span>
         </button>
         <button 
           onClick={() => setSpeed('SLOW')}
           className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${speed === 'SLOW' ? 'bg-blue-900/30 border-blue-500 text-white' : 'border-transparent text-slate-500 hover:bg-slate-700'}`}
         >
           <Turtle className="w-5 h-5 mb-1" />
-          <span className="text-xs font-bold">Танк</span>
+          <span className="text-xs font-bold">{t.speedSlow}</span>
         </button>
       </div>
       <div className="text-center text-xs text-slate-400 mb-6 font-medium">
@@ -271,13 +273,13 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
             <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
                <div className="h-full bg-emerald-500 transition-all duration-300 animate-pulse" style={{width: '100%'}}></div>
             </div>
-            <p className="text-xs text-slate-400 mt-2">Не закрывайте браузер</p>
+            <p className="text-xs text-slate-400 mt-2">{t.doNotClose}</p>
           </div>
         )}
 
         {connectionStatus === 'FAILED' ? (
-             <div className="text-red-400 text-sm font-medium py-4">
-                 ID сессии не найден.<br/>Проверьте цифры на компьютере.
+             <div className="text-red-400 text-sm font-medium py-4 whitespace-pre-wrap">
+                 {t.errorId}
              </div>
         ) : (
             <>
@@ -289,8 +291,8 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
                     : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                 }`}
                 >
-                {isUploading ? 'Идет передача...' : 
-                 connectionStatus === 'VERIFYING' ? 'Проверка ID...' : 'Выбрать файлы'}
+                {isUploading ? t.uploading : 
+                 connectionStatus === 'VERIFYING' ? t.verifying : t.chooseFiles}
                 </label>
                 <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" id="file-upload" disabled={!isReady} />
             </>
@@ -299,10 +301,10 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
 
       {/* История отправки */}
       <div className="flex-1">
-        <h3 className="text-sm font-medium text-slate-400 mb-3 px-2">История отправки</h3>
+        <h3 className="text-sm font-medium text-slate-400 mb-3 px-2">{t.historyTitle}</h3>
         <div className="space-y-2">
             {history.length === 0 ? (
-                <p className="text-xs text-slate-600 text-center py-4">Нет отправленных файлов</p>
+                <p className="text-xs text-slate-600 text-center py-4">{t.noHistory}</p>
             ) : (
                 history.map((item, idx) => (
                     <div key={idx} className="bg-slate-800/50 p-3 rounded-lg flex items-center justify-between border border-slate-700/50">

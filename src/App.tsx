@@ -2,14 +2,18 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import HostSession from './components/HostSession';
 import ClientSession from './components/ClientSession';
-import { AppMode } from './types';
+import { AppMode, Language } from './types';
 import { generateShortId } from './utils/storage';
 import { Monitor, Smartphone, ArrowRight, ShieldCheck } from 'lucide-react';
+import { translations } from './utils/translations';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.LANDING);
   const [sessionId, setSessionId] = useState<string>('');
   const [inputSessionId, setInputSessionId] = useState('');
+  const [language, setLanguage] = useState<Language>('RU');
+
+  const t = translations[language];
 
   // Handle Hash Routing for simulating scanning the QR code
   useEffect(() => {
@@ -40,7 +44,7 @@ const App: React.FC = () => {
 
   const joinSession = () => {
     if (!inputSessionId || inputSessionId.length < 6) {
-      alert('Введите корректный ID сессии (6 цифр)');
+      alert('Error: ID must be 6 digits');
       return;
     }
     setSessionId(inputSessionId);
@@ -60,18 +64,17 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-indigo-500/30">
-      <Header />
+      <Header language={language} setLanguage={setLanguage} />
       
       <main className="container mx-auto px-4 py-8 md:py-12">
         {mode === AppMode.LANDING && (
           <div className="max-w-4xl mx-auto flex flex-col items-center">
             <div className="text-center mb-12 space-y-4">
               <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-purple-300 to-indigo-300">
-                Передавайте файлы мгновенно.
+                {t.landing.title}
               </h2>
               <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-                Никаких регистраций, облаков и приложений. <br/>
-                Простое и безопасное соединение между вашими устройствами.
+                {t.landing.subtitle}
               </p>
             </div>
 
@@ -85,12 +88,12 @@ const App: React.FC = () => {
                 <div className="bg-slate-900 p-4 rounded-full mb-6 group-hover:scale-110 transition-transform duration-300 border border-slate-700 group-hover:border-indigo-500/50">
                   <Monitor className="w-10 h-10 text-indigo-400" />
                 </div>
-                <h3 className="text-2xl font-bold mb-3 text-white">Я — Компьютер</h3>
+                <h3 className="text-2xl font-bold mb-3 text-white">{t.landing.iAmHost}</h3>
                 <p className="text-slate-400 mb-6">
-                  Получить QR-код для приема файлов с телефона.
+                  {t.landing.hostDesc}
                 </p>
                 <div className="mt-auto flex items-center gap-2 text-indigo-400 font-medium group-hover:text-indigo-300">
-                  Начать прием <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  {t.landing.startReceiving} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
 
@@ -99,15 +102,15 @@ const App: React.FC = () => {
                  <div className="bg-slate-900 p-4 rounded-full mb-6 border border-slate-700">
                   <Smartphone className="w-10 h-10 text-purple-400" />
                 </div>
-                <h3 className="text-2xl font-bold mb-3 text-white">Я — Телефон</h3>
+                <h3 className="text-2xl font-bold mb-3 text-white">{t.landing.iAmClient}</h3>
                 <p className="text-slate-400 mb-6">
-                  У меня есть файлы для отправки.
+                  {t.landing.clientDesc}
                 </p>
                 
                 <div className="w-full mt-auto space-y-3" onClick={e => e.stopPropagation()}>
                   <input 
                     type="text" 
-                    placeholder="Введите ID сессии (6 цифр)"
+                    placeholder={t.landing.inputPlaceholder}
                     value={inputSessionId}
                     onChange={(e) => setInputSessionId(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-center text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors"
@@ -117,7 +120,7 @@ const App: React.FC = () => {
                     onClick={joinSession}
                     className="w-full bg-purple-600 hover:bg-purple-500 text-white font-medium py-3 rounded-lg transition-colors flex justify-center items-center gap-2"
                   >
-                    Подключиться
+                    {t.landing.connectBtn}
                   </button>
                 </div>
               </div>
@@ -126,9 +129,9 @@ const App: React.FC = () => {
             <div className="mt-16 bg-indigo-900/20 rounded-xl p-4 flex items-start gap-3 max-w-2xl border border-indigo-500/20">
               <ShieldCheck className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-slate-300 text-left">
-                <p className="font-semibold text-indigo-200 mb-1">Полная конфиденциальность</p>
+                <p className="font-semibold text-indigo-200 mb-1">{t.landing.privacyTitle}</p>
                 <p>
-                  Ваши файлы не сохраняются на серверах. Данные "нарезаются" на части и передаются через защищенный канал напрямую в память получателя. После закрытия вкладки данные исчезают навсегда.
+                  {t.landing.privacyDesc}
                 </p>
               </div>
             </div>
@@ -136,11 +139,11 @@ const App: React.FC = () => {
         )}
 
         {mode === AppMode.HOST && (
-          <HostSession sessionId={sessionId} onExit={resetApp} onSwitchRole={switchRole} />
+          <HostSession sessionId={sessionId} onExit={resetApp} onSwitchRole={switchRole} t={t.host} />
         )}
 
         {mode === AppMode.CLIENT && (
-          <ClientSession sessionId={sessionId} onExit={resetApp} onSwitchRole={switchRole} />
+          <ClientSession sessionId={sessionId} onExit={resetApp} onSwitchRole={switchRole} t={t.client} />
         )}
       </main>
     </div>

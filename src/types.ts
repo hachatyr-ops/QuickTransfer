@@ -35,3 +35,5 @@ export interface FileChunk {
 
 export type TransferSpeed = 'FAST' | 'NORMAL' | 'SLOW';
 export type ConnectionStatus = 'CONNECTING' | 'VERIFYING' | 'CONNECTED' | 'FAILED';
+
+export type Language = 'RU' | 'EN';

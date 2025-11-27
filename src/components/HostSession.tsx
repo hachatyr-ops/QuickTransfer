@@ -4,14 +4,16 @@ import { TransferFile, SESSION_DURATION_MS, MqttMessage, FileChunk } from '../ty
 import { getSessionTopic, createMqttClient, formatBytes } from '../utils/storage';
 import { FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { MqttClient } from 'mqtt';
+import { translations } from '../utils/translations';
 
 interface HostSessionProps {
   sessionId: string;
   onExit: () => void;
   onSwitchRole: () => void;
+  t: typeof translations.RU.host;
 }
 
-const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRole }) => {
+const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRole, t }) => {
   const [files, setFiles] = useState<TransferFile[]>([]);
   const [timeLeft, setTimeLeft] = useState<string>('30:00');
   const [isConnected, setIsConnected] = useState(false);
@@ -153,30 +155,30 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
     <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in pb-12">
       <div className="md:col-span-1 space-y-4">
         <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl flex flex-col items-center text-center">
-          <h2 className="text-slate-400 text-sm font-medium mb-4 uppercase tracking-wider">Подключение</h2>
+          <h2 className="text-slate-400 text-sm font-medium mb-4 uppercase tracking-wider">{t.connectionTitle}</h2>
           
           <div className="bg-white p-3 rounded-xl mb-4 relative">
              {!isConnected && (
                <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-10 text-orange-500 font-bold text-xs">
                  <Loader2 className="w-6 h-6 animate-spin mb-1" />
-                 <span>Связь...</span>
+                 <span>{t.connecting}</span>
                </div>
              )}
              <QRCodeSVG value={shareUrl} size={160} />
           </div>
           
-          <p className="text-xs text-slate-500 mb-2">Сканируйте камерой телефона</p>
+          <p className="text-xs text-slate-500 mb-2">{t.scanText}</p>
           
           <div className="flex flex-col gap-2 w-full">
             <div className="flex items-center justify-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-700">
               <Smartphone className="w-4 h-4 text-indigo-400" />
-              <span className="text-sm font-mono text-indigo-300">ID: {sessionId}</span>
+              <span className="text-sm font-mono text-indigo-300">{t.idLabel}: {sessionId}</span>
             </div>
             <div className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-full border ${
               isConnected ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-red-900/20 border-red-700 text-red-500'
             }`}>
               {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              <span className="text-xs font-medium">{isConnected ? 'В сети' : 'Нет связи'}</span>
+              <span className="text-xs font-medium">{isConnected ? t.statusOnline : t.statusOffline}</span>
             </div>
           </div>
         </div>
@@ -185,21 +187,21 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
             onClick={onExit} 
             className="w-full py-3 flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40 rounded-xl transition-all shadow-sm"
         >
-          <Trash2 className="w-4 h-4" /> <span>Завершить сессию</span>
+          <Trash2 className="w-4 h-4" /> <span>{t.stopSession}</span>
         </button>
       </div>
 
       <div className="md:col-span-2">
         <div className="bg-slate-800 rounded-2xl border border-slate-700 shadow-xl min-h-[500px] flex flex-col">
           <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-            <h2 className="text-xl font-semibold flex items-center gap-2">Полученные файлы</h2>
-            <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full">{files.length} шт.</span>
+            <h2 className="text-xl font-semibold flex items-center gap-2">{t.receivedFiles}</h2>
+            <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full">{files.length} {t.pieces}</span>
           </div>
           
           {receivingState && (
             <div className="px-6 py-3 bg-indigo-900/30 border-b border-indigo-500/20">
               <div className="flex justify-between text-xs text-indigo-300 mb-1">
-                 <span>Прием: {receivingState.name}</span>
+                 <span>{t.receiving}: {receivingState.name}</span>
                  <span>{receivingState.progress}%</span>
               </div>
               <div className="w-full bg-slate-700 h-1 rounded-full overflow-hidden">
@@ -212,7 +214,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
             {files.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4 opacity-50">
                 <Download className="w-16 h-16 stroke-1" />
-                <p>Отправьте файл с телефона...</p>
+                <p>{t.emptyFiles}</p>
               </div>
             ) : (
               files.map((file) => (
@@ -223,7 +225,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
                     <p className="text-xs text-slate-500 mt-1">{formatBytes(file.size)}</p>
                   </div>
                   <a href={file.downloadUrl} download={file.name} className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
-                    <Download className="w-4 h-4" /> Скачать
+                    <Download className="w-4 h-4" /> {t.downloadBtn}
                   </a>
                 </div>
               ))
