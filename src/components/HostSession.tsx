@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TransferFile, SESSION_DURATION_MS, MqttMessage, FileChunk } from '../types';
 import { getSessionTopic, createMqttClient, formatBytes } from '../utils/storage';
-import { FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff, ArrowRightLeft } from 'lucide-react';
+import { FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 
 interface HostSessionProps {
@@ -109,8 +109,15 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
       }
     });
 
-    client.on('offline', () => setIsConnected(false));
-    client.on('reconnect', () => setIsConnected(false));
+    client.on('reconnect', () => {
+        console.log('Host reconnecting...');
+        setIsConnected(false);
+    });
+    
+    client.on('offline', () => {
+        setIsConnected(false);
+    });
+
     clientRef.current = client;
 
     // Таймер
@@ -132,14 +139,6 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
       clearInterval(timerInterval);
     };
   }, [sessionId, onExit, onSwitchRole]);
-
-  const handleSwitchClick = () => {
-      if (clientRef.current && isConnected) {
-          const msg: MqttMessage = { type: 'switch-role', payload: {} };
-          clientRef.current.publish(getSessionTopic(sessionId), JSON.stringify(msg));
-          onSwitchRole();
-      }
-  };
 
   const getFileIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-purple-400" />;
@@ -181,14 +180,6 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRo
             </div>
           </div>
         </div>
-
-        <button 
-            onClick={handleSwitchClick} 
-            disabled={!isConnected}
-            className="w-full py-3 flex items-center justify-center gap-2 bg-amber-600/10 text-amber-500 hover:bg-amber-600/20 border border-amber-500/30 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-            <ArrowRightLeft className="w-4 h-4" /> <span>Хочу отправить файл</span>
-        </button>
 
         <button onClick={onExit} className="w-full py-3 flex items-center justify-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors">
           <Trash2 className="w-4 h-4" /> <span>Завершить сессию</span>

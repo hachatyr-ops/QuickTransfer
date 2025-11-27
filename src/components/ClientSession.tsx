@@ -28,6 +28,7 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clientRef = useRef<MqttClient | null>(null);
+  const handshakeIntervalRef = useRef<any>(null);
   const handshakeTimeoutRef = useRef<any>(null);
 
   // Жесткий лимит 8 МБ для браузерного JS
@@ -39,24 +40,35 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
     // Уникальный ID для этого клиента, чтобы знать, кому отвечать
     const myClientId = 'client-' + Math.random().toString(36).substring(7);
 
+    // Функция отправки запроса
+    const sendHandshake = () => {
+        if (client.connected) {
+            console.log('Sending handshake SYN...');
+            const synMsg: MqttMessage = {
+                type: 'handshake-syn',
+                payload: { clientId: myClientId }
+            };
+            client.publish(topic, JSON.stringify(synMsg));
+        }
+    };
+
     client.on('connect', () => {
         // Как только подключились к MQTT - начинаем верификацию
         setConnectionStatus('VERIFYING');
         client.subscribe(topic);
 
-        // Отправляем сигнал "Рукопожатие"
-        const synMsg: MqttMessage = {
-            type: 'handshake-syn',
-            payload: { clientId: myClientId }
-        };
-        client.publish(topic, JSON.stringify(synMsg));
+        // Пытаемся стучаться каждые 1.5 секунды, пока не ответят (или пока не истечет время)
+        // Это нужно, чтобы дать второму устройству время на переключение роли/подключение
+        sendHandshake(); // Сразу
+        handshakeIntervalRef.current = setInterval(sendHandshake, 1500);
 
-        // Если через 3 секунды не ответят - значит ID неправильный или хост оффлайн
+        // Если через 10 секунд (увеличили время) не ответят - фейл
         handshakeTimeoutRef.current = setTimeout(() => {
             if (connectionStatus !== 'CONNECTED') {
+                clearInterval(handshakeIntervalRef.current);
                 setConnectionStatus('FAILED');
             }
-        }, 3000);
+        }, 10000);
     });
 
     client.on('message', (t, message) => {
@@ -65,11 +77,13 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
             
             // Если получили ответ лично для нас
             if (parsed.type === 'handshake-ack' && parsed.payload.targetId === myClientId) {
+                console.log('Handshake ACK received!');
+                clearInterval(handshakeIntervalRef.current);
                 clearTimeout(handshakeTimeoutRef.current);
                 setConnectionStatus('CONNECTED');
             }
 
-            // --- СМЕНА РОЛИ (Поступила команда от Хоста) ---
+            // --- СМЕНА РОЛИ (Поступила команда от Хоста - хотя кнопку мы убрали, оставим логику на всякий) ---
             if (parsed.type === 'switch-role') {
                 onSwitchRole();
             }
@@ -77,11 +91,15 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwit
         } catch (e) { console.error(e); }
     });
 
-    client.on('offline', () => setConnectionStatus('CONNECTING')); // Пытаемся переподключиться
+    client.on('offline', () => {
+        if (connectionStatus === 'CONNECTED') setConnectionStatus('CONNECTING');
+    }); 
+    
     clientRef.current = client;
 
     return () => { 
         client.end(); 
+        if (handshakeIntervalRef.current) clearInterval(handshakeIntervalRef.current);
         if (handshakeTimeoutRef.current) clearTimeout(handshakeTimeoutRef.current);
     };
   }, [sessionId, onSwitchRole]);
