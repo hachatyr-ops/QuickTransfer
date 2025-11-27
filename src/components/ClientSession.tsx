@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getSessionTopic, createMqttClient, sendFileViaChunks, formatBytes } from '../utils/storage';
-import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock, Gauge, Rabbit, Turtle, ShieldCheck, AlertCircle } from 'lucide-react';
+import { UploadCloud, ArrowLeft, Wifi, WifiOff, Loader2, Zap, CheckCircle, Clock, Gauge, Rabbit, Turtle, ShieldCheck, AlertCircle, ArrowRightLeft } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 import { TransferSpeed, ConnectionStatus, MqttMessage } from '../types';
 
 interface ClientSessionProps {
   sessionId: string;
   onExit: () => void;
+  onSwitchRole: () => void;
 }
 
 interface HistoryItem {
@@ -15,7 +16,7 @@ interface HistoryItem {
   time: string;
 }
 
-const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
+const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit, onSwitchRole }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   
@@ -61,11 +62,18 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
     client.on('message', (t, message) => {
         try {
             const parsed: MqttMessage = JSON.parse(message.toString());
+            
             // Если получили ответ лично для нас
             if (parsed.type === 'handshake-ack' && parsed.payload.targetId === myClientId) {
                 clearTimeout(handshakeTimeoutRef.current);
                 setConnectionStatus('CONNECTED');
             }
+
+            // --- СМЕНА РОЛИ (Поступила команда от Хоста) ---
+            if (parsed.type === 'switch-role') {
+                onSwitchRole();
+            }
+
         } catch (e) { console.error(e); }
     });
 
@@ -76,7 +84,15 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         client.end(); 
         if (handshakeTimeoutRef.current) clearTimeout(handshakeTimeoutRef.current);
     };
-  }, [sessionId]);
+  }, [sessionId, onSwitchRole]);
+
+  const handleSwitchClick = () => {
+      if (clientRef.current && connectionStatus === 'CONNECTED') {
+          const msg: MqttMessage = { type: 'switch-role', payload: {} };
+          clientRef.current.publish(getSessionTopic(sessionId), JSON.stringify(msg));
+          onSwitchRole();
+      }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -241,11 +257,14 @@ const ClientSession: React.FC<ClientSessionProps> = ({ sessionId, onExit }) => {
         )}
       </div>
 
-      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 text-center mb-6">
-        <p className="text-xs text-slate-400">
-          Лимит: <span className="text-white font-bold">8 МБ</span>. <br/>
-          Если файл не доходит, выберите режим <b>"Танк"</b>.
-        </p>
+      <div className="flex gap-2 mb-6">
+        <button 
+          onClick={handleSwitchClick}
+          disabled={!isReady}
+          className="flex-1 py-3 px-4 rounded-xl font-medium text-amber-500 bg-amber-600/10 border border-amber-500/30 hover:bg-amber-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <ArrowRightLeft className="w-4 h-4" /> Поменяться местами
+        </button>
       </div>
 
       {/* История отправки */}

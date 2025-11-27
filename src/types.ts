@@ -19,7 +19,7 @@ export const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
 // Типы сообщений
 export interface MqttMessage {
-  type: 'file-shared' | 'file-chunk' | 'handshake-syn' | 'handshake-ack';
+  type: 'file-shared' | 'file-chunk' | 'handshake-syn' | 'handshake-ack' | 'switch-role';
   payload: any;
 }
 

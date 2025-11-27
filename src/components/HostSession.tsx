@@ -2,15 +2,16 @@ import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TransferFile, SESSION_DURATION_MS, MqttMessage, FileChunk } from '../types';
 import { getSessionTopic, createMqttClient, formatBytes } from '../utils/storage';
-import { FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff, ArrowRightLeft } from 'lucide-react';
 import { MqttClient } from 'mqtt';
 
 interface HostSessionProps {
   sessionId: string;
   onExit: () => void;
+  onSwitchRole: () => void;
 }
 
-const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
+const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit, onSwitchRole }) => {
   const [files, setFiles] = useState<TransferFile[]>([]);
   const [timeLeft, setTimeLeft] = useState<string>('30:00');
   const [isConnected, setIsConnected] = useState(false);
@@ -19,6 +20,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
   const [receivingState, setReceivingState] = useState<{name: string, progress: number} | null>(null);
 
   const chunksBuffer = useRef<Map<string, any>>(new Map());
+  const clientRef = useRef<MqttClient | null>(null);
 
   useEffect(() => {
     const client = createMqttClient();
@@ -45,6 +47,12 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
                 payload: { targetId: clientId }
             };
             client.publish(topic, JSON.stringify(ackMsg));
+            return;
+        }
+
+        // --- СМЕНА РОЛИ (Поступила команда от Клиента) ---
+        if (parsed.type === 'switch-role') {
+            onSwitchRole();
             return;
         }
 
@@ -103,6 +111,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
 
     client.on('offline', () => setIsConnected(false));
     client.on('reconnect', () => setIsConnected(false));
+    clientRef.current = client;
 
     // Таймер
     const startTime = Date.now();
@@ -122,7 +131,15 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
       client.end();
       clearInterval(timerInterval);
     };
-  }, [sessionId, onExit]);
+  }, [sessionId, onExit, onSwitchRole]);
+
+  const handleSwitchClick = () => {
+      if (clientRef.current && isConnected) {
+          const msg: MqttMessage = { type: 'switch-role', payload: {} };
+          clientRef.current.publish(getSessionTopic(sessionId), JSON.stringify(msg));
+          onSwitchRole();
+      }
+  };
 
   const getFileIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-purple-400" />;
@@ -164,6 +181,15 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
             </div>
           </div>
         </div>
+
+        <button 
+            onClick={handleSwitchClick} 
+            disabled={!isConnected}
+            className="w-full py-3 flex items-center justify-center gap-2 bg-amber-600/10 text-amber-500 hover:bg-amber-600/20 border border-amber-500/30 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            <ArrowRightLeft className="w-4 h-4" /> <span>Хочу отправить файл</span>
+        </button>
+
         <button onClick={onExit} className="w-full py-3 flex items-center justify-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors">
           <Trash2 className="w-4 h-4" /> <span>Завершить сессию</span>
         </button>

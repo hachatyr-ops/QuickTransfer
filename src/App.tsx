@@ -23,7 +23,6 @@ const App: React.FC = () => {
         }
       } else if (mode === AppMode.LANDING) {
         // Only reset if we are purely landing, otherwise keep state
-        // This prevents reset on accidental hash changes
       }
     };
 
@@ -53,6 +52,10 @@ const App: React.FC = () => {
     setSessionId('');
     window.location.hash = '';
     window.history.pushState("", document.title, window.location.pathname + window.location.search);
+  };
+
+  const switchRole = () => {
+    setMode(prev => prev === AppMode.HOST ? AppMode.CLIENT : AppMode.HOST);
   };
 
   return (
@@ -134,11 +137,11 @@ const App: React.FC = () => {
         )}
 
         {mode === AppMode.HOST && (
-          <HostSession sessionId={sessionId} onExit={resetApp} />
+          <HostSession sessionId={sessionId} onExit={resetApp} onSwitchRole={switchRole} />
         )}
 
         {mode === AppMode.CLIENT && (
-          <ClientSession sessionId={sessionId} onExit={resetApp} />
+          <ClientSession sessionId={sessionId} onExit={resetApp} onSwitchRole={switchRole} />
         )}
       </main>
     </div>
