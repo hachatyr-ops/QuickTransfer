@@ -3,15 +3,9 @@ export interface TransferFile {
   name: string;
   size: number;
   type: string;
-  dataUrl?: string;
+  downloadUrl: string; // Ссылка на скачивание
+  expires: string;     // Когда удалится
   uploadedAt: number;
-}
-
-export interface SessionData {
-  sessionId: string;
-  createdAt: number;
-  expiresAt: number;
-  files: TransferFile[];
 }
 
 export enum AppMode {
@@ -21,3 +15,9 @@ export enum AppMode {
 }
 
 export const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+
+// Структура сообщения через MQTT
+export interface MqttMessage {
+  type: 'file-shared';
+  payload: TransferFile;
+}

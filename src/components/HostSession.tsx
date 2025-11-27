@@ -1,114 +1,59 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { TransferFile, SESSION_DURATION_MS } from '../types';
-import { getPeerId, formatBytes, PEER_CONFIG, generateShortId } from '../utils/storage';
-import { Peer } from 'peerjs';
-import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
+import { TransferFile, SESSION_DURATION_MS, MqttMessage } from '../types';
+import { getSessionTopic, createMqttClient, formatBytes } from '../utils/storage';
+import { Clock, FileText, Image as ImageIcon, Film, Music, Download, Trash2, Smartphone, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { MqttClient } from 'mqtt';
 
 interface HostSessionProps {
   sessionId: string;
   onExit: () => void;
 }
 
-const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, onExit }) => {
-  const [currentSessionId, setCurrentSessionId] = useState(initialSessionId);
+const HostSession: React.FC<HostSessionProps> = ({ sessionId, onExit }) => {
   const [files, setFiles] = useState<TransferFile[]>([]);
   const [timeLeft, setTimeLeft] = useState<string>('30:00');
-  const [peerStatus, setPeerStatus] = useState<'initializing' | 'ready' | 'error' | 'reconnecting'>('initializing');
-  const [connections, setConnections] = useState<number>(0);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
-  
-  const peerRef = useRef<Peer | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const clientRef = useRef<MqttClient | null>(null);
 
-  // Debug Logger
-  const addLog = useCallback((msg: string) => {
-    const time = new Date().toLocaleTimeString();
-    setLogs(prev => [`[${time}] ${msg}`, ...prev]);
-  }, []);
-
-  // Initialize PeerJS Host
+  // Инициализация MQTT
   useEffect(() => {
-    setPeerStatus('initializing');
-    addLog(`--- Init Host Session (ID: ${currentSessionId}) ---`);
-    const peerId = getPeerId(currentSessionId);
-    
-    // Create a new Peer with the specific ID and secure config
-    const peer = new Peer(peerId, PEER_CONFIG);
+    const client = createMqttClient();
+    const topic = getSessionTopic(sessionId);
 
-    peer.on('open', (id) => {
-      addLog(`Host Peer Opened. Ready.`);
-      setPeerStatus('ready');
-    });
-
-    peer.on('disconnected', () => {
-      addLog('Peer disconnected from server. Attempting reconnect...');
-      setPeerStatus('reconnecting');
-      // Workaround for PeerJS: reconnect only works if not destroyed
-      if (!peer.destroyed) {
-        peer.reconnect();
-      }
-    });
-
-    peer.on('connection', (conn) => {
-      addLog(`Incoming Connection Request!`);
-      setConnections(prev => prev + 1);
-
-      conn.on('open', () => {
-         addLog(`Connection fully established with Client.`);
-      });
-
-      conn.on('data', (data: any) => {
-        // Handle incoming data
-        if (data && data.type === 'file-transfer' && data.file) {
-           addLog(`Received file: ${data.file.name} (${formatBytes(data.file.size)})`);
-           setFiles(prev => [data.file, ...prev]);
+    client.on('connect', () => {
+      console.log('Host connected to MQTT broker');
+      setIsConnected(true);
+      client.subscribe(topic, (err) => {
+        if (!err) {
+          console.log(`Subscribed to ${topic}`);
         }
       });
-
-      conn.on('close', () => {
-        addLog(`Client disconnected.`);
-        setConnections(prev => Math.max(0, prev - 1));
-      });
-      
-      conn.on('error', (err) => {
-        addLog(`Connection Error: ${err}`);
-        setConnections(prev => Math.max(0, prev - 1));
-      });
-      
-      conn.peerConnection.oniceconnectionstatechange = () => {
-        addLog(`ICE State: ${conn.peerConnection.iceConnectionState}`);
-      };
     });
 
-    peer.on('error', (err: any) => {
-      addLog(`PEER ERROR: ${err.type} - ${err.message}`);
-      console.error('Peer error:', err);
-      
-      // Auto-retry logic if ID is taken
-      if (err.type === 'unavailable-id') {
-        addLog('ID taken, generating new ID...');
-        const newId = generateShortId();
-        setCurrentSessionId(newId); // This triggers useEffect again
-      } else if (err.type === 'network') {
-         // Keep attempting to reconnect for network errors
-         addLog('Network error. Will try to recover...');
-         setPeerStatus('reconnecting');
-      } else {
-        setPeerStatus('error');
+    client.on('message', (topic, message) => {
+      try {
+        const parsed: MqttMessage = JSON.parse(message.toString());
+        if (parsed.type === 'file-shared') {
+          setFiles(prev => [parsed.payload, ...prev]);
+        }
+      } catch (e) {
+        console.error('Failed to parse message', e);
       }
     });
 
-    peerRef.current = peer;
+    client.on('offline', () => setIsConnected(false));
+    client.on('reconnect', () => setIsConnected(false)); // Пока переподключается - не готов
 
-    // Timer logic
+    clientRef.current = client;
+
+    // Таймер
     const startTime = Date.now();
     const endTime = startTime + SESSION_DURATION_MS;
 
     const timerInterval = setInterval(() => {
       const now = Date.now();
       const diff = endTime - now;
-      
       if (diff <= 0) {
         onExit();
       } else {
@@ -119,12 +64,10 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
     }, 1000);
 
     return () => {
-      if (peerRef.current) {
-        peerRef.current.destroy();
-      }
+      client.end();
       clearInterval(timerInterval);
     };
-  }, [currentSessionId, onExit, addLog]);
+  }, [sessionId, onExit]);
 
   const getFileIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-purple-400" />;
@@ -133,47 +76,21 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
     return <FileText className="w-5 h-5 text-blue-400" />;
   };
 
-  const handleDownload = (file: TransferFile) => {
-    if (!file.dataUrl) return;
-    const link = document.createElement('a');
-    link.href = file.dataUrl;
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Update URL hash to match current ID (if it changed due to collision)
-  useEffect(() => {
-      window.location.hash = `#/host/${currentSessionId}`; // Just for display
-  }, [currentSessionId]);
-
-  const shareUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}#/join/${currentSessionId}`;
+  const shareUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}#/join/${sessionId}`;
 
   return (
     <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in pb-12">
-      {/* Sidebar / Info Panel */}
+      {/* Sidebar */}
       <div className="md:col-span-1 space-y-4">
         <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl flex flex-col items-center text-center">
           <h2 className="text-slate-400 text-sm font-medium mb-4 uppercase tracking-wider">Подключение</h2>
           
           <div className="bg-white p-3 rounded-xl mb-4 relative">
-             {peerStatus === 'initializing' && (
-               <div className="absolute inset-0 bg-white/90 flex items-center justify-center z-10">
-                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-               </div>
-             )}
-             {peerStatus === 'reconnecting' && (
-               <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-10 text-orange-500 font-bold text-xs p-2 text-center">
+             {!isConnected && (
+               <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-10 text-orange-500 font-bold text-xs">
                  <Loader2 className="w-6 h-6 animate-spin mb-1" />
-                 <span>Восстановление связи...</span>
+                 <span>Связь...</span>
                </div>
-             )}
-             {peerStatus === 'error' && (
-                <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center z-10 text-red-500 font-bold text-xs p-2 text-center">
-                  <span>Ошибка сети</span>
-                  <button onClick={() => setCurrentSessionId(generateShortId())} className="mt-2 text-blue-500 underline">Повторить</button>
-                </div>
              )}
              <QRCodeSVG value={shareUrl} size={160} />
           </div>
@@ -183,17 +100,17 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
           <div className="flex flex-col gap-2 w-full">
             <div className="flex items-center justify-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-700">
               <Smartphone className="w-4 h-4 text-indigo-400" />
-              <span className="text-sm font-mono text-indigo-300">ID: {currentSessionId}</span>
+              <span className="text-sm font-mono text-indigo-300">ID: {sessionId}</span>
             </div>
 
             <div className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-full border ${
-              connections > 0 
+              isConnected
                 ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' 
-                : 'bg-slate-900/50 border-slate-700 text-slate-500'
+                : 'bg-red-900/20 border-red-700 text-red-500'
             }`}>
-              {connections > 0 ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
               <span className="text-xs font-medium">
-                {connections > 0 ? 'Устройство подключено' : 'Ожидание...'}
+                {isConnected ? 'В сети' : 'Нет связи'}
               </span>
             </div>
           </div>
@@ -216,41 +133,14 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
           <Trash2 className="w-4 h-4" />
           <span>Завершить сессию</span>
         </button>
-
-         {/* HOST LOG CONSOLE */}
-        <div className="mt-4 border-t border-slate-700 pt-4">
-             <button 
-                onClick={() => setShowLogs(!showLogs)}
-                className="flex items-center gap-2 text-slate-500 hover:text-slate-300 text-xs w-full mb-2"
-            >
-                <Terminal className="w-3 h-3" />
-                <span>Системный журнал</span>
-                {showLogs ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
-            </button>
-            
-            {showLogs && (
-                <div className="bg-black/80 rounded-lg p-3 h-32 overflow-y-auto font-mono text-[10px] leading-relaxed animate-fade-in">
-                    {logs.length === 0 && <span className="text-slate-600">Журнал пуст...</span>}
-                    {logs.map((log, i) => (
-                        <div key={i} className="text-green-400 border-b border-white/5 pb-0.5 mb-0.5">
-                            {log}
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
       </div>
 
-      {/* Main Content / File List */}
+      {/* Main Content */}
       <div className="md:col-span-2">
         <div className="bg-slate-800 rounded-2xl border border-slate-700 shadow-xl min-h-[500px] flex flex-col">
           <div className="p-6 border-b border-slate-700 flex justify-between items-center">
             <h2 className="text-xl font-semibold flex items-center gap-2">
-              <span className={`relative flex h-3 w-3 ${connections > 0 ? '' : 'hidden'}`}>
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-              </span>
-              Полученные файлы
+               Полученные файлы
             </h2>
             <span className="text-sm text-slate-400 bg-slate-900 px-3 py-1 rounded-full">
               {files.length} шт.
@@ -261,7 +151,7 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
             {files.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4 opacity-50">
                 <Download className="w-16 h-16 stroke-1" />
-                <p>Ожидание файлов с устройства...</p>
+                <p>Отсканируйте код и отправьте файл...</p>
               </div>
             ) : (
               files.map((file) => (
@@ -271,15 +161,16 @@ const HostSession: React.FC<HostSessionProps> = ({ sessionId: initialSessionId, 
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-medium text-slate-200 truncate">{file.name}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{formatBytes(file.size)} • {new Date(file.uploadedAt).toLocaleTimeString()}</p>
+                    <p className="text-xs text-slate-500 mt-1">{formatBytes(file.size)} • Сгорит через 24ч</p>
                   </div>
-                  <button 
-                    onClick={() => handleDownload(file)}
-                    className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
-                    title="Скачать"
+                  <a 
+                    href={file.downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
                   >
-                    <Download className="w-5 h-5" />
-                  </button>
+                    <Download className="w-4 h-4" /> Скачать
+                  </a>
                 </div>
               ))
             )}
