@@ -11,7 +11,16 @@ const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.LANDING);
   const [sessionId, setSessionId] = useState<string>('');
   const [inputSessionId, setInputSessionId] = useState('');
-  const [language, setLanguage] = useState<Language>('RU');
+  
+  // Автоматическое определение языка
+  const [language, setLanguage] = useState<Language>(() => {
+    // Проверяем, есть ли доступ к navigator (браузер)
+    if (typeof navigator !== 'undefined' && navigator.language) {
+      // Если язык браузера начинается на 'ru' (например ru-RU, ru-BY), ставим RU
+      return navigator.language.toLowerCase().startsWith('ru') ? 'RU' : 'EN';
+    }
+    return 'EN'; // По умолчанию для остальных
+  });
 
   const t = translations[language];
 
