@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://quick-transfer-fawn.vercel.app/sitemap.xml
+Sitemap: https://q-t.vercel.app/sitemap.xml
