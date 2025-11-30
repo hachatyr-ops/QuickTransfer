@@ -4,7 +4,7 @@ import HostSession from './components/HostSession';
 import ClientSession from './components/ClientSession';
 import { AppMode, Language } from './types';
 import { generateShortId } from './utils/storage';
-import { Monitor, Smartphone, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Monitor, Smartphone, ArrowRight, ShieldCheck, Lock } from 'lucide-react';
 import { translations } from './utils/translations';
 
 const App: React.FC = () => {
@@ -79,7 +79,7 @@ const App: React.FC = () => {
         {mode === AppMode.LANDING && (
           <div className="max-w-4xl mx-auto flex flex-col items-center">
             <div className="text-center mb-12 space-y-4">
-              <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-purple-300 to-indigo-300">
+              <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-300 via-teal-200 to-emerald-300 leading-tight">
                 {t.landing.title}
               </h2>
               <p className="text-lg text-slate-400 max-w-2xl mx-auto">
@@ -87,21 +87,21 @@ const App: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-3xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-3xl mb-16">
               {/* PC / Host Card */}
               <div 
                 onClick={startHost}
-                className="group relative bg-slate-800 rounded-2xl p-8 border border-slate-700 hover:border-indigo-500 transition-all cursor-pointer hover:shadow-2xl hover:shadow-indigo-500/10 flex flex-col items-center text-center overflow-hidden"
+                className="group relative bg-slate-800 rounded-2xl p-8 border border-slate-700 hover:border-emerald-500 transition-all cursor-pointer hover:shadow-2xl hover:shadow-emerald-500/10 flex flex-col items-center text-center overflow-hidden"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="bg-slate-900 p-4 rounded-full mb-6 group-hover:scale-110 transition-transform duration-300 border border-slate-700 group-hover:border-indigo-500/50">
-                  <Monitor className="w-10 h-10 text-indigo-400" />
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="bg-slate-900 p-4 rounded-full mb-6 group-hover:scale-110 transition-transform duration-300 border border-slate-700 group-hover:border-emerald-500/50">
+                  <Monitor className="w-10 h-10 text-emerald-400" />
                 </div>
                 <h3 className="text-2xl font-bold mb-3 text-white">{t.landing.iAmHost}</h3>
                 <p className="text-slate-400 mb-6">
                   {t.landing.hostDesc}
                 </p>
-                <div className="mt-auto flex items-center gap-2 text-indigo-400 font-medium group-hover:text-indigo-300">
+                <div className="mt-auto flex items-center gap-2 text-emerald-400 font-medium group-hover:text-emerald-300">
                   {t.landing.startReceiving} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
@@ -135,15 +135,35 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="mt-16 bg-indigo-900/20 rounded-xl p-4 flex items-start gap-3 max-w-2xl border border-indigo-500/20">
-              <ShieldCheck className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-slate-300 text-left">
-                <p className="font-semibold text-indigo-200 mb-1">{t.landing.privacyTitle}</p>
-                <p>
-                  {t.landing.privacyDesc}
-                </p>
+            {/* Info Blocks */}
+            <div className="w-full max-w-2xl space-y-4">
+              {/* Security Tip Block */}
+              <div className="bg-amber-900/10 rounded-xl p-5 flex items-start gap-4 border border-amber-500/20">
+                <div className="bg-amber-900/30 p-2 rounded-lg mt-1">
+                   <Lock className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                </div>
+                <div className="text-sm text-slate-300 text-left">
+                  <p className="font-bold text-amber-200 mb-1">{t.landing.securityTitle}</p>
+                  <p className="text-slate-400 leading-relaxed">
+                    {t.landing.securityDesc}
+                  </p>
+                </div>
+              </div>
+
+              {/* Privacy Block */}
+              <div className="bg-emerald-900/10 rounded-xl p-5 flex items-start gap-4 border border-emerald-500/20">
+                <div className="bg-emerald-900/30 p-2 rounded-lg mt-1">
+                   <ShieldCheck className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                </div>
+                <div className="text-sm text-slate-300 text-left">
+                  <p className="font-bold text-emerald-200 mb-1">{t.landing.privacyTitle}</p>
+                  <p className="text-slate-400 leading-relaxed">
+                    {t.landing.privacyDesc}
+                  </p>
+                </div>
               </div>
             </div>
+
           </div>
         )}
 

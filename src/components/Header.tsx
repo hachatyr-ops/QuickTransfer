@@ -11,11 +11,11 @@ const Header: React.FC<HeaderProps> = ({ language, setLanguage }) => {
   return (
     <header className="w-full py-6 flex justify-between items-center px-4 md:px-8 border-b border-indigo-900/50 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10 shadow-lg shadow-indigo-500/10">
       <div className="flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-full border border-indigo-500/30">
-        <div className="bg-indigo-600 p-1.5 rounded-lg shadow-lg shadow-indigo-600/50">
+        <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-600/50">
           <Share2 className="w-5 h-5 text-white" />
         </div>
         <h1 className="text-lg md:text-xl font-bold text-white tracking-wide">
-          QuickTransfer <span className="text-emerald-400">v16.2</span>
+          QuickTransfer <span className="text-emerald-400">v17.0</span>
         </h1>
       </div>
 

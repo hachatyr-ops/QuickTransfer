@@ -1,8 +1,8 @@
 export const translations = {
   RU: {
     landing: {
-      title: "Передавайте файлы мгновенно.",
-      subtitle: "Никаких регистраций, облаков и приложений. Простое и безопасное соединение между вашими устройствами.",
+      title: "Передавайте файлы безопасно.",
+      subtitle: "Простое и безопасное соединение между вашими устройствами через браузер. Не нужно проходить регистрацию или устанавливать дополнительные программы.",
       iAmHost: "Я — Компьютер",
       hostDesc: "Получить QR-код для приема файлов с телефона.",
       startReceiving: "Начать прием",
@@ -11,7 +11,9 @@ export const translations = {
       inputPlaceholder: "Введите ID сессии (6 цифр)",
       connectBtn: "Подключиться",
       privacyTitle: "Полная конфиденциальность",
-      privacyDesc: "Ваши файлы не сохраняются на серверах. Данные передаются напрямую в память получателя. После закрытия вкладки данные исчезают навсегда."
+      privacyDesc: "Ваши файлы не сохраняются на серверах. Данные передаются напрямую на устройство получателя. Никаких цифровых следов.",
+      securityTitle: "Совет по безопасности",
+      securityDesc: "Ввод личных паролей на чужих устройствах (в копицентрах, университетах, отелях) — это риск кражи вашего аккаунта. Используйте этот сервис в общественных местах, чтобы передать файлы, не входя в свои учетные записи."
     },
     host: {
       connectionTitle: "Подключение",
@@ -53,8 +55,8 @@ export const translations = {
   },
   EN: {
     landing: {
-      title: "Transfer files instantly.",
-      subtitle: "No registration, clouds, or apps. Simple and secure connection between your devices.",
+      title: "Transfer files securely.",
+      subtitle: "Simple and secure connection between your devices via browser. No need to register or install additional software.",
       iAmHost: "I am a Computer",
       hostDesc: "Get a QR code to receive files from a phone.",
       startReceiving: "Start Receiving",
@@ -63,7 +65,9 @@ export const translations = {
       inputPlaceholder: "Enter Session ID (6 digits)",
       connectBtn: "Connect",
       privacyTitle: "Total Privacy",
-      privacyDesc: "Your files are not stored on servers. Data is transferred directly to the recipient's memory. Data vanishes forever after closing the tab."
+      privacyDesc: "Your files are not stored on servers. Data is transferred directly to the recipient's device. No digital footprint.",
+      securityTitle: "Security Tip",
+      securityDesc: "Entering personal passwords on public devices (copy centers, universities, hotels) is a risk. Use this service in public places to transfer files without logging into your accounts."
     },
     host: {
       connectionTitle: "Connection",
